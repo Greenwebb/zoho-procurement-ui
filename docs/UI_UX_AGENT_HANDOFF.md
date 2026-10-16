@@ -189,6 +189,12 @@ The arrows represent product relationships, not a hard requirement that every te
 | Automation editor and selector components                                           | `96`–`99`, `113`–`120`                                                                                | Workflow rules, alerts, schedules; do not execute from screenshot-only flows                                        |
 | Notification-template editor/category page                                          | `53`–`71`, plus PDF template pages `47`–`52`                                                          | One template management UI keyed by notification/document type                                                      |
 
+### Shared list tools and file workflows
+
+Use one list/table toolbar configured by module. The user-supplied Vendor screenshot and the sanitized follow-up note in [REFERENCE_LIST_CONTROLS.md](REFERENCE_LIST_CONTROLS.md) supplement the original `06_vendors.png` capture. Preserve the **Active Vendors** saved view, quick search, Advanced Search fields, sort menu, row selection, Customize Columns/Clip Text, and More Actions structure. The Vendor More Actions menu includes Sort by, Import, Export, Preferences, Refresh List, and Reset Column Width; Preferences navigates to the existing Vendor settings screen instead of creating a duplicate page.
+
+Vendor **Import** opens a choice between Vendors and Vendor's Contact Persons, then a shared Configure → Map Fields → Preview wizard. Vendor **Export** exposes Export Vendors, Export Current View, and (when rows are selected) Export Selected. Apply these controls across relevant catalog/transaction lists with entity-specific fields and actions. This frontend's import/export operates only on browser-local demo records; it parses CSV/TSV locally and displays the XLS limitation, and it must never call Zoho or download live tenant records.
+
 ### Navigation/state model recommendation
 
 Use stable screen identifiers (examples below), with workflow context separate from the screen:

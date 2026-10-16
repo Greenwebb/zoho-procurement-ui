@@ -14,6 +14,10 @@ Build the Zoho Procurement frontend from the existing 118-screenshot collection 
 - Organization/configuration settings, module preferences and tabs, PDF/email template categories, automation lists, and the captured field/rule/button/related-list/email-alert/schedule builders.
 - Represent empty, populated, selected, validation, unsaved, draft, and post-list/detail states where the references support them. Keep View, Edit, and Delete as explicit CRUD affordances instead of making a listed record title edit directly.
 - Add canonical record-detail screens for business records. Vendors use a tabbed profile (Overview, Comments, Transactions, Mails, Statement); Items and transaction entities use reusable detail layouts configured with entity-specific fields, lines, lifecycle context, and associated records.
+- Add the missing list-tool states the user identified: saved/status views, advanced filters, sort fields, column selection/clip behavior, Import, and Export. Reuse one configurable list-tools layer across catalog and transaction tables, with module-specific fields/actions.
+- Vendors list controls must include the observed Sort by fields (Name, Company Name, Payables (BCY), Unused Credits (BCY), Created Time, Last Modified Time), Import Vendors, Export Vendors, Export Current View, Preferences, Refresh List, Reset Column Width, Customize Columns, Clip Text, and Advanced Search. Advanced Search includes Display Name, Company Name, First Name, Last Name, Email, Phone, Address, Notes, and Status.
+- The Vendor import UI follows Configure → Map Fields → Preview, starts with Vendors vs Vendor's Contact Persons, shows CSV/TSV/XLS and the 25 MB limit, sample templates, duplicate handling choices, UTF-8, and Cancel/Next controls. Because this is frontend-only, file parsing and import state stay local to the browser and only synthetic/local data can be added; the implementation parses CSV/TSV and clearly marks XLS as shown for reference but not parsed. Never upload or import live tenant records.
+- Export exposes Export Vendors and Export Current View, operates only on local demo data, and reuses the same list context. Preferences reuses the existing vendor module settings route rather than duplicating a settings page.
 - The 118 images are visual references, not 118 separate React pages. Dropdowns, role variants, wizard stages, detail tabs, and repeat captures reuse canonical page/component definitions.
 
 ## Implementation approach
@@ -23,7 +27,7 @@ Use React, TypeScript, Vite, Tailwind CSS, React Router, and an outline-icon lib
 This is a frontend prototype, not a Zoho integration: use fictional fixtures and browser-local state for records, draft forms, wizard progress, search/filter choices, and settings previews. Label simulated actions clearly. No authentication, actual payments, email delivery, Zoho API access, production record changes, database, or server are part of this frontend scope. Never import the real tenant's users, email addresses, drafts, or procurement records into the preview.
 
 - Central route registry with stable screen IDs and reference IDs.
-- Shared list framework configured by module, with distinct columns/statuses/actions.
+- Shared list framework and `ListTools` configured by module, with distinct columns/statuses/actions, advanced filter schemas, sort fields, column visibility, and local import/export behavior.
 - Shared transaction primitives composed into entity-specific forms; receiving, billing, payment, credit, and recurrence remain semantically distinct.
 - One request model with employee/Procurement role views.
 - One RFQ draft with six stage components and dialog subflows; basic details is not implemented twice.
@@ -44,7 +48,7 @@ Mobile first: adapt the sidebar into a navigation drawer/bottom entry points, st
 - `src/app/`: routing, providers, layout selection, screen registry.
 - `src/components/ui/`: buttons, fields, select controls, tabs, dialogs, badges, notices.
 - `src/components/layout/`: app shell, top bar, sidebar/mobile navigation, settings shell.
-- `src/components/data/`: table/filter framework, catalog pickers, line editor, totals, attachment controls, record detail sections.
+- `src/components/data/`: table/filter/list-tools framework, import/export dialogs, catalog pickers, line editor, totals, attachment controls, record detail sections.
 - `src/features/`: dashboard, requests/approvals, catalogs, canonical record details, RFQ, transactions, budgets/reports, settings/automation.
 - `src/data/`: fictional fixtures and reference-to-screen mappings.
 - `src/lib/`: browser-local persistence, formatting, validation, workflow context.

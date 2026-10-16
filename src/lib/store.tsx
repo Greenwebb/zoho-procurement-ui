@@ -25,6 +25,8 @@ export type AppRecord = {
   date: string;
   amount: number;
   status: string;
+  createdAt?: string;
+  lastModifiedAt?: string;
   lines?: Line[];
   meta?: Record<string, string>;
 };
@@ -269,8 +271,37 @@ export const fixtures: AppRecord[] = [
     meta: { vendorId: "VEND-001", creditReason: "Returned supplies" },
   },
 ];
-export function saveToRecords(records: AppRecord[], record: AppRecord) {
-  return [record, ...records.filter((existing) => existing.id !== record.id)];
+export function saveToRecords(
+  records: AppRecord[],
+  record: AppRecord,
+  now = new Date().toISOString(),
+) {
+  const existing = records.find((candidate) => candidate.id === record.id);
+  return [
+    {
+      ...record,
+      createdAt: record.createdAt ?? existing?.createdAt ?? now,
+      lastModifiedAt: now,
+    },
+    ...records.filter((candidate) => candidate.id !== record.id),
+  ];
+}
+export function updateInRecords(
+  records: AppRecord[],
+  id: string,
+  updates: Partial<AppRecord>,
+  now = new Date().toISOString(),
+) {
+  return records.map((record) =>
+    record.id === id
+      ? {
+          ...record,
+          ...updates,
+          createdAt: record.createdAt ?? now,
+          lastModifiedAt: now,
+        }
+      : record,
+  );
 }
 export function removeFromRecords(records: AppRecord[], id: string) {
   return records.filter((record) => record.id !== id);
@@ -290,7 +321,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const vendors = records.filter((record) => record.kind === "vendors");
     const items = records.filter((record) => record.kind === "items");
     let changed = false;
-    const migrated = records.map((record) => {
+    const migrated = records.map((record, index) => {
+      const dateValue = Date.parse(`${record.date}T00:00:00.000Z`);
+      const createdAt =
+        record.createdAt ??
+        new Date(
+          (Number.isFinite(dateValue) ? dateValue : Date.now()) + index * 1000,
+        ).toISOString();
+      const lastModifiedAt = record.lastModifiedAt ?? createdAt;
+      const timestampChanged = !record.createdAt || !record.lastModifiedAt;
+      if (timestampChanged) changed = true;
       let meta = record.meta;
       const vendorId = inferVendorId(record, vendors);
       if (vendorId && vendorId !== record.meta?.vendorId) {
@@ -307,8 +347,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (lines.some((line, index) => line !== record.lines?.[index]))
           changed = true;
       }
-      return meta !== record.meta || lines !== record.lines
-        ? { ...record, meta, lines }
+      return timestampChanged || meta !== record.meta || lines !== record.lines
+        ? { ...record, createdAt, lastModifiedAt, meta, lines }
         : record;
     });
     if (changed) setRecords(migrated);
@@ -323,11 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRecords((previous) => saveToRecords(previous, record));
   };
   const updateRecord = (id: string, updates: Partial<AppRecord>) =>
-    setRecords((previous) =>
-      previous.map((record) =>
-        record.id === id ? { ...record, ...updates } : record,
-      ),
-    );
+    setRecords((previous) => updateInRecords(previous, id, updates));
   const deleteRecord = (id: string) =>
     setRecords((previous) => removeFromRecords(previous, id));
   return (

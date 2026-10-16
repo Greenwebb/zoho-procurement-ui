@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { transactionTotals, validateLines } from "./calculations";
-import { saveToRecords, removeFromRecords, fixtures, type Line } from "./store";
+import {
+  saveToRecords,
+  updateInRecords,
+  removeFromRecords,
+  fixtures,
+  type Line,
+} from "./store";
+import { parseDelimited, parseNonNegativeAmount } from "./csv";
+import { removeSelectedId, updateVisibleSelection } from "./list-state";
 import { modules, canonicalRoutes } from "../data/modules";
 import { settingsRoutes } from "../data/settings";
 
@@ -88,6 +96,64 @@ describe("canonical screens and records", () => {
     expect(new Set(fixtures.map((record) => record.id)).size).toBe(
       fixtures.length,
     );
+  });
+});
+
+describe("local list tools", () => {
+  it("preserves hidden selections and removes deleted IDs", () => {
+    expect(updateVisibleSelection(["hidden"], ["visible"], true)).toEqual([
+      "hidden",
+      "visible",
+    ]);
+    expect(
+      updateVisibleSelection(["hidden", "visible"], ["visible"], false),
+    ).toEqual(["hidden"]);
+    expect(removeSelectedId(["hidden", "visible"], "visible")).toEqual([
+      "hidden",
+    ]);
+  });
+  it("parses tab-separated data even when a header contains commas", () => {
+    expect(
+      parseDelimited(
+        "Display Name\tNotes, Internal\nDemo Vendor\tTier 2, local",
+        "\t",
+      ),
+    ).toEqual({
+      headers: ["Display Name", "Notes, Internal"],
+      rows: [
+        { "Display Name": "Demo Vendor", "Notes, Internal": "Tier 2, local" },
+      ],
+    });
+  });
+  it("accepts valid nonnegative prices and rejects malformed or negative values", () => {
+    expect(parseNonNegativeAmount("$1,250.50")).toBe(1250.5);
+    expect(parseNonNegativeAmount("")).toBe(0);
+    expect(parseNonNegativeAmount("-5")).toBeNull();
+    expect(parseNonNegativeAmount("not a number")).toBeNull();
+    expect(parseNonNegativeAmount("1.2.3")).toBeNull();
+  });
+  it("preserves creation time and advances modification time on local edits", () => {
+    const vendor = fixtures.find((record) => record.kind === "vendors")!;
+    const existing = {
+      ...vendor,
+      createdAt: "2025-01-01T00:00:00.000Z",
+      lastModifiedAt: "2025-01-01T00:00:00.000Z",
+    };
+    const saved = saveToRecords(
+      [existing],
+      { ...existing, title: "Renamed local vendor" },
+      "2026-02-03T04:05:06.000Z",
+    )[0];
+    expect(saved.createdAt).toBe(existing.createdAt);
+    expect(saved.lastModifiedAt).toBe("2026-02-03T04:05:06.000Z");
+    const updated = updateInRecords(
+      [saved],
+      saved.id,
+      { title: "Edited local vendor" },
+      "2026-03-04T05:06:07.000Z",
+    )[0];
+    expect(updated.createdAt).toBe(existing.createdAt);
+    expect(updated.lastModifiedAt).toBe("2026-03-04T05:06:07.000Z");
   });
 });
 

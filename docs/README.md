@@ -36,6 +36,10 @@ The screenshots are clean local renders of pages inspected in the authenticated 
 
 Read-only follow-up inspection of a Vendor profile and an Item detail revealed additional post-table screens and CRUD affordances. Their sanitized structure, tabs, fields, and capture boundaries are documented in [REFERENCE_VENDOR_DETAIL.md](REFERENCE_VENDOR_DETAIL.md). The live record's contact, bank, and financial values were not copied into the frontend fixtures.
 
+## Supplemental list-controls reference
+
+The Vendors list also has Advanced Search, saved views, Sort by, Import/Export submenus, Preferences, Refresh, Reset Column Width, and column customization. Their observed labels, wizard structure, and safe inspection boundaries are documented in [REFERENCE_LIST_CONTROLS.md](REFERENCE_LIST_CONTROLS.md). Preferences reuses the existing Vendors settings screen.
+
 ## Settings and configuration screenshots
 
 | Area                                                     | Screenshot files                                                                                                                                                                                                                                                 |

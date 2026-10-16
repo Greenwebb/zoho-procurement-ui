@@ -4,7 +4,6 @@ import {
   Plus,
   Search,
   ChevronDown,
-  Download,
   MoreHorizontal,
   ArrowRight,
   FileText,
@@ -15,36 +14,18 @@ import {
 } from "lucide-react";
 import { modules, type ModuleKey } from "../data/modules";
 import { useApp, money, type AppRecord } from "../lib/store";
+import { removeSelectedId, updateVisibleSelection } from "../lib/list-state";
 import { Badge, Button, EmptyState, Modal, PageHeader } from "../components/ui";
 import { DeleteConfirm } from "../components/data/DetailPrimitives";
+import {
+  ListTools,
+  type ExportScope,
+  type ListColumn,
+  type ListFilterField,
+  type ListSortOption,
+} from "../components/data/ListTools";
+import { downloadCsv } from "../lib/csv";
 
-export function exportRecords(records: AppRecord[], name: string) {
-  const escape = (value: unknown) =>
-    `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const csv = [
-    "Number,Title,Party,Date,Amount,Status",
-    ...records.map((record) =>
-      [
-        record.id,
-        record.title,
-        record.party,
-        record.date,
-        record.amount,
-        record.status,
-      ]
-        .map(escape)
-        .join(","),
-    ),
-  ].join("\n");
-  const url = URL.createObjectURL(
-    new Blob([csv], { type: "text/csv;charset=utf-8;" }),
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${name}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
 export function RecordList({
   kind,
   procurement = false,
@@ -60,6 +41,16 @@ export function RecordList({
   const [query, setQuery] = useState(""),
     [status, setStatus] = useState("All"),
     [sort, setSort] = useState("newest"),
+    [filters, setFilters] = useState<Record<string, string>>({}),
+    [visibleColumns, setVisibleColumns] = useState<string[]>([
+      "date",
+      "number",
+      "party",
+      "status",
+      "amount",
+    ]),
+    [columnWidths, setColumnWidths] = useState<Record<string, number>>({}),
+    [clipText, setClipText] = useState(false),
     [selected, setSelected] = useState<string[]>([]),
     [detail, setDetail] = useState<AppRecord | null>(null),
     [pendingDelete, setPendingDelete] = useState<AppRecord | null>(null);
@@ -76,14 +67,34 @@ export function RecordList({
           .includes(query.toLowerCase()) &&
         (status === "All" ||
           (status === "Empty" && false) ||
-          record.status === status),
+          record.status === status) &&
+        Object.entries(filters).every(([key, value]) => {
+          if (!value) return true;
+          const values: Record<string, string> = {
+            number: record.id,
+            title: record.title,
+            party: record.party,
+            date: record.date,
+            status: record.status,
+            amount: String(record.amount),
+          };
+          return (values[key] ?? "")
+            .toLowerCase()
+            .includes(value.toLowerCase());
+        }),
     )
     .sort((a, b) =>
       sort === "amount"
         ? b.amount - a.amount
         : sort === "oldest"
-          ? a.id.localeCompare(b.id)
-          : b.id.localeCompare(a.id),
+          ? a.date.localeCompare(b.date) || a.id.localeCompare(b.id)
+          : sort === "number"
+            ? a.id.localeCompare(b.id)
+            : sort === "party"
+              ? a.party.localeCompare(b.party)
+              : sort === "status"
+                ? a.status.localeCompare(b.status)
+                : b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
     );
   const title = approval
     ? "Approvals"
@@ -91,6 +102,70 @@ export function RecordList({
       ? "Purchase Requests"
       : config.title;
   const statuses = [...new Set(all.map((record) => record.status))];
+  const columns: ListColumn[] = [
+    { key: "date", label: "Date", width: 90 },
+    { key: "number", label: "Number / Description", width: 230 },
+    {
+      key: "party",
+      label: kind === "requests" ? "Department" : "Vendor / Team",
+      width: 180,
+    },
+    { key: "status", label: "Status", width: 130 },
+    { key: "amount", label: kind === "rfqs" ? "Type" : "Amount", width: 130 },
+  ];
+  const sortOptions: ListSortOption[] = [
+    { key: "newest", label: "Date · Newest first" },
+    { key: "oldest", label: "Date · Oldest first" },
+    { key: "number", label: "Number" },
+    {
+      key: "party",
+      label: kind === "requests" ? "Department" : "Vendor / Team",
+    },
+    { key: "status", label: "Status" },
+    { key: "amount", label: "Amount · Highest first" },
+  ];
+  const filterFields: ListFilterField[] = [
+    { key: "number", label: "Number" },
+    { key: "title", label: "Description" },
+    {
+      key: "party",
+      label: kind === "requests" ? "Department" : "Vendor / Team",
+    },
+    { key: "date", label: "Date" },
+    { key: "status", label: "Status", type: "select", options: statuses },
+    { key: "amount", label: "Amount" },
+  ];
+  const exportLocal = (scope: ExportScope) => {
+    const dataset =
+      scope === "all"
+        ? all
+        : scope === "selected"
+          ? all.filter((record) => selected.includes(record.id))
+          : filtered;
+    const exportColumns =
+      scope === "all"
+        ? columns
+        : columns.filter((column) => visibleColumns.includes(column.key));
+    const rows = [
+      exportColumns.map((column) => column.label),
+      ...dataset.map((record) =>
+        exportColumns.map((column) => {
+          if (column.key === "number") return `${record.id} · ${record.title}`;
+          if (column.key === "party") return record.party;
+          if (column.key === "date") return record.date;
+          if (column.key === "status") return record.status;
+          return kind === "rfqs" ? "Request for Quote" : String(record.amount);
+        }),
+      ),
+    ];
+    downloadCsv(
+      `${kind}-${scope === "all" ? "all" : scope === "view" ? "current-view" : "selected"}.csv`,
+      rows,
+    );
+    notify(
+      `Downloaded ${dataset.length} local demo ${config.title.toLowerCase()} record(s).`,
+    );
+  };
   const returnContext = procurement
     ? "?entry=procurement"
     : approval
@@ -106,6 +181,7 @@ export function RecordList({
   const removeRecord = () => {
     if (!pendingDelete) return;
     deleteRecord(pendingDelete.id);
+    setSelected((previous) => removeSelectedId(previous, pendingDelete.id));
     notify(
       `${pendingDelete.id} removed from local demo data. Linked records remain unchanged.`,
     );
@@ -142,14 +218,36 @@ export function RecordList({
         }
         actions={
           <>
-            <Button
-              variant="secondary"
-              aria-label="Export visible records"
-              onClick={() => exportRecords(filtered, kind)}
-            >
-              <Download size={15} />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
+            <ListTools
+              entity={title}
+              columns={columns}
+              visibleColumns={visibleColumns}
+              onVisibleColumnsChange={setVisibleColumns}
+              columnWidths={columnWidths}
+              onColumnWidthsChange={setColumnWidths}
+              clipText={clipText}
+              onClipTextChange={setClipText}
+              sortOptions={sortOptions}
+              onSort={setSort}
+              filterFields={filterFields}
+              activeFilters={filters}
+              onApplyFilters={setFilters}
+              currentView={status === "All" ? `All ${title}` : status}
+              viewOptions={[`All ${title}`, ...statuses]}
+              onViewChange={(view) =>
+                setStatus(view.startsWith("All") ? "All" : view)
+              }
+              onExport={exportLocal}
+              selectedCount={selected.length}
+              onRefresh={() =>
+                notify(`${title} list refreshed in this local preview.`)
+              }
+              onResetWidths={() => {
+                setColumnWidths({});
+                notify("Column widths restored to their default preview size.");
+              }}
+              notify={notify}
+            />
             {!approval && (
               <Link
                 to={`/${kind}/new${procurement ? "?entry=procurement" : ""}`}
@@ -228,15 +326,7 @@ export function RecordList({
         {selected.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 border-b border-blue-100 bg-blue-50 px-5 py-3 text-xs text-blue-700">
             <span>{selected.length} selected</span>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                exportRecords(
-                  all.filter((record) => selected.includes(record.id)),
-                  `${kind}-selected`,
-                )
-              }
-            >
+            <Button variant="secondary" onClick={() => exportLocal("selected")}>
               Export selected
             </Button>
             <button className="ml-auto" onClick={() => setSelected([])}>
@@ -246,10 +336,10 @@ export function RecordList({
         )}
         {filtered.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full min-w-[920px] table-fixed text-left">
               <thead className="table-head">
                 <tr>
-                  <th className="table-cell !py-3">
+                  <th className="table-cell !py-3" style={{ width: 40 }}>
                     <input
                       aria-label="Select all visible records"
                       type="checkbox"
@@ -258,32 +348,48 @@ export function RecordList({
                         filtered.every((record) => selected.includes(record.id))
                       }
                       onChange={(event) =>
-                        setSelected(
-                          event.target.checked
-                            ? filtered.map((record) => record.id)
-                            : [],
+                        setSelected((previous) =>
+                          updateVisibleSelection(
+                            previous,
+                            filtered.map((record) => record.id),
+                            event.target.checked,
+                          ),
                         )
                       }
                     />
                   </th>
-                  {[
-                    "Date",
-                    "Number / Description",
-                    kind === "requests" ? "Department" : "Vendor / Team",
-                    "Status",
-                    kind === "rfqs" ? "Type" : "Amount",
-                    "",
-                  ].map((label, index) => (
-                    <th key={index} className="table-cell !py-3">
-                      {label}
-                    </th>
-                  ))}
+                  {columns
+                    .filter((column) => visibleColumns.includes(column.key))
+                    .map((column) => (
+                      <th
+                        key={column.key}
+                        style={{
+                          width: columnWidths[column.key] ?? column.width,
+                        }}
+                        className="table-cell !py-3"
+                      >
+                        <button
+                          className="font-medium hover:text-blue-600"
+                          onClick={() =>
+                            setSort(
+                              column.key === "date" ? "newest" : column.key,
+                            )
+                          }
+                        >
+                          {column.label}
+                        </button>
+                      </th>
+                    ))}
+                  <th
+                    className="table-cell sticky right-0 z-10 !py-3 bg-slate-50 shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.4)]"
+                    style={{ width: 84 }}
+                  ></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((record) => (
                   <tr key={record.id} className="hover:bg-[#fafbfe]">
-                    <td className="table-cell w-10">
+                    <td className="table-cell w-10" style={{ width: 40 }}>
                       <input
                         type="checkbox"
                         aria-label={`Select ${record.id}`}
@@ -297,32 +403,51 @@ export function RecordList({
                         }
                       />
                     </td>
-                    <td className="table-cell text-slate-500">{record.date}</td>
-                    <td className="table-cell">
-                      <Link
-                        className="text-left"
-                        to={`/${kind}/${record.id}${returnContext}`}
-                      >
-                        <span className="font-medium text-blue-500">
-                          {record.id}
-                        </span>
-                        <span className="mt-1 block text-xs text-slate-400">
-                          {record.title}
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="table-cell text-slate-600">
-                      {record.party}
-                    </td>
-                    <td className="table-cell">
-                      <Badge>{record.status}</Badge>
-                    </td>
-                    <td className="table-cell font-medium text-slate-700">
-                      {kind === "rfqs"
-                        ? "Request for Quote"
-                        : money(record.amount)}
-                    </td>
-                    <td className="table-cell">
+                    {columns
+                      .filter((column) => visibleColumns.includes(column.key))
+                      .map((column) => (
+                        <td
+                          key={column.key}
+                          style={{
+                            width: columnWidths[column.key] ?? column.width,
+                          }}
+                          className={`table-cell ${clipText ? "max-w-[240px] truncate whitespace-nowrap" : "whitespace-normal"}`}
+                        >
+                          {column.key === "date" ? (
+                            <span className="text-slate-500">
+                              {record.date}
+                            </span>
+                          ) : column.key === "number" ? (
+                            <Link
+                              className="text-left"
+                              to={`/${kind}/${record.id}${returnContext}`}
+                            >
+                              <span className="font-medium text-blue-500">
+                                {record.id}
+                              </span>
+                              <span className="mt-1 block text-xs text-slate-400">
+                                {record.title}
+                              </span>
+                            </Link>
+                          ) : column.key === "party" ? (
+                            <span className="text-slate-600">
+                              {record.party}
+                            </span>
+                          ) : column.key === "status" ? (
+                            <Badge>{record.status}</Badge>
+                          ) : (
+                            <span className="font-medium text-slate-700">
+                              {kind === "rfqs"
+                                ? "Request for Quote"
+                                : money(record.amount)}
+                            </span>
+                          )}
+                        </td>
+                      ))}
+                    <td
+                      className="table-cell sticky right-0 z-10 bg-white shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.4)]"
+                      style={{ width: 84 }}
+                    >
                       <button
                         onClick={() => setDetail(record)}
                         aria-label={`Actions for ${record.id}`}

@@ -25,6 +25,7 @@ For focused browser interaction regressions, start `pnpm dev` and run `python3 s
 - [Capture index](docs/README.md)
 - [Capture manifest](docs/capture_manifest.csv)
 - [Sanitized vendor/item detail reference](docs/REFERENCE_VENDOR_DETAIL.md)
+- [Vendor filters and list Import/Export reference](docs/REFERENCE_LIST_CONTROLS.md)
 - 118 private screenshot references are in `docs/`; they are not placed in the website's `public/` assets.
 
 The frontend declares 104 canonical routes, including reusable record-detail and edit paths. Vendor, item, transaction, RFQ, and batch interactions modify only fictional browser-local demo records.

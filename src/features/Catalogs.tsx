@@ -5,18 +5,15 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import {
-  ArrowLeft,
-  Download,
-  Eye,
-  Package,
-  Pencil,
-  Plus,
-  Search,
-  Store,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { DeleteConfirm } from "../components/data/DetailPrimitives";
+import {
+  ListTools,
+  type ExportScope,
+  type ListColumn,
+  type ListFilterField,
+  type ListSortOption,
+} from "../components/data/ListTools";
 import {
   Badge,
   Button,
@@ -29,6 +26,8 @@ import {
   Textarea,
 } from "../components/ui";
 import { billBalance } from "../lib/payables";
+import { downloadCsv, parseNonNegativeAmount } from "../lib/csv";
+import { removeSelectedId, updateVisibleSelection } from "../lib/list-state";
 import { belongsToVendor } from "../lib/vendor-links";
 import {
   items as itemFixtures,
@@ -38,6 +37,11 @@ import {
   vendors as vendorFixtures,
   type AppRecord,
 } from "../lib/store";
+import type {
+  DuplicateMode,
+  ImportKind,
+  ImportResult,
+} from "../components/data/ListImportWizard";
 
 type CatalogKind = "items" | "vendors";
 function safeTransactionReturnTo(value: string | null): string | null {
@@ -221,26 +225,31 @@ function readBanks(value: string | undefined): MaskedBank[] {
       : [];
   });
 }
-function csv(filename: string, rows: string[][]) {
-  const content = rows
-    .map((row) =>
-      row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","),
-    )
-    .join("\n");
-  const url = URL.createObjectURL(
-    new Blob([content], { type: "text/csv;charset=utf-8" }),
-  );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
 export function CatalogList({ kind }: { kind: CatalogKind }) {
-  const { records, updateRecord, deleteRecord, notify } = useApp();
+  const { records, saveRecord, updateRecord, deleteRecord, notify } = useApp();
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
+  const [view, setView] = useState(
+    kind === "vendors" ? "Active Vendors" : "Active Items",
+  );
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [sortKey, setSortKey] = useState("name");
+  const [clipText, setClipText] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+    kind === "items"
+      ? ["name", "sku", "description", "rate", "unit", "status"]
+      : [
+          "name",
+          "company",
+          "email",
+          "phone",
+          "payables",
+          "unusedCredits",
+          "status",
+        ],
+  );
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [deleteTarget, setDeleteTarget] = useState<AppRecord | null>(null);
   const seeds = kind === "items" ? itemSeeds : vendorSeeds;
   useEffect(() => {
@@ -263,51 +272,422 @@ export function CatalogList({ kind }: { kind: CatalogKind }) {
     }
   }, [kind, records, updateRecord]);
   const catalog = records.filter((record) => record.kind === kind);
-  const filtered = useMemo(
-    () =>
-      catalog.filter((record) => {
-        const text =
-          `${record.title} ${record.party} ${Object.values(record.meta ?? {}).join(" ")}`.toLowerCase();
-        return (
-          text.includes(query.toLowerCase()) &&
-          (status === "all" ||
-            record.status.toLowerCase() === status.toLowerCase())
-        );
-      }),
-    [catalog, query, status],
-  );
   const label = kind === "items" ? "Items" : "Vendors";
-  const Icon = kind === "items" ? Package : Store;
-  const statuses = [...new Set(catalog.map((record) => record.status))];
+  const viewOptions = [`All ${label}`, `Active ${label}`, `Inactive ${label}`];
+  const columns: ListColumn[] =
+    kind === "items"
+      ? [
+          { key: "name", label: "Name", width: 160 },
+          { key: "sku", label: "SKU", width: 95 },
+          { key: "description", label: "Purchase description", width: 190 },
+          { key: "rate", label: "Purchase rate", width: 100 },
+          { key: "unit", label: "Usage unit", width: 90 },
+          { key: "status", label: "Status", width: 72 },
+        ]
+      : [
+          { key: "name", label: "Display name", width: 150 },
+          { key: "company", label: "Company name", width: 140 },
+          { key: "email", label: "Email", width: 165 },
+          { key: "phone", label: "Work phone", width: 125 },
+          { key: "payables", label: "Payables (BCY)", width: 110 },
+          { key: "unusedCredits", label: "Unused Credits (BCY)", width: 140 },
+          { key: "status", label: "Status", width: 72 },
+        ];
+  const sortOptions: ListSortOption[] =
+    kind === "vendors"
+      ? [
+          { key: "name", label: "Name" },
+          { key: "company", label: "Company Name" },
+          { key: "payables", label: "Payables (BCY)" },
+          { key: "unusedCredits", label: "Unused Credits (BCY)" },
+          { key: "created", label: "Created Time" },
+          { key: "modified", label: "Last Modified Time" },
+        ]
+      : [
+          { key: "name", label: "Name" },
+          { key: "sku", label: "SKU" },
+          { key: "rate", label: "Purchase Rate" },
+          { key: "status", label: "Status" },
+          { key: "created", label: "Created Time" },
+        ];
+  const filterFields: ListFilterField[] =
+    kind === "vendors"
+      ? [
+          { key: "displayName", label: "Display Name" },
+          { key: "company", label: "Company Name" },
+          { key: "firstName", label: "First Name" },
+          { key: "lastName", label: "Last Name" },
+          { key: "email", label: "Email" },
+          { key: "phone", label: "Phone" },
+          { key: "address", label: "Address" },
+          { key: "notes", label: "Notes" },
+          {
+            key: "status",
+            label: "Status",
+            type: "select",
+            options: ["Active", "Inactive"],
+          },
+        ]
+      : [
+          { key: "name", label: "Name" },
+          { key: "sku", label: "SKU" },
+          { key: "description", label: "Purchase Description" },
+          { key: "rate", label: "Purchase Rate" },
+          { key: "unit", label: "Unit" },
+          {
+            key: "status",
+            label: "Status",
+            type: "select",
+            options: ["Active", "Inactive"],
+          },
+        ];
   const payable = (vendor: AppRecord) =>
     records
       .filter((item) => item.kind === "bills" && belongsToVendor(item, vendor))
       .reduce((sum, bill) => sum + billBalance(records, bill), 0);
-  const exportRows =
-    kind === "items"
-      ? [
-          ["Name", "SKU", "Purchase rate", "Unit", "Status"],
-          ...catalog.map((record) => [
-            record.title,
-            record.meta?.sku ?? "",
-            String(record.amount),
-            record.meta?.unit ?? "",
-            record.status,
-          ]),
-        ]
-      : [
-          ["Display name", "Company", "Email", "Work phone", "Status"],
-          ...catalog.map((record) => [
-            record.title,
-            record.meta?.company ?? record.party,
-            record.meta?.email ?? "",
-            record.meta?.phone ?? "",
-            record.status,
-          ]),
-        ];
+  const unusedCredits = (vendor: AppRecord) =>
+    records
+      .filter(
+        (item) =>
+          item.kind === "vendor-credits" &&
+          item.status !== "Draft" &&
+          belongsToVendor(item, vendor),
+      )
+      .reduce(
+        (sum, credit) =>
+          sum +
+          Number(
+            credit.meta?.unusedAmount ??
+              (credit.meta?.appliedBillId ? 0 : credit.amount),
+          ),
+        0,
+      );
+  const filterValue = (record: AppRecord, key: string) => {
+    const meta = record.meta ?? {};
+    const values: Record<string, string> = {
+      name: record.title,
+      displayName: meta.displayName ?? record.title,
+      company: meta.company ?? record.party,
+      firstName: meta.firstName ?? "",
+      lastName: meta.lastName ?? "",
+      email: meta.email ?? "",
+      phone: meta.phone ?? "",
+      address: `${meta.billingAddress ?? ""} ${meta.shippingAddress ?? ""}`,
+      notes: `${meta.remarks ?? ""} ${meta.description ?? ""}`,
+      sku: meta.sku ?? "",
+      description: meta.description ?? "",
+      rate: String(record.amount),
+      unit: meta.unit ?? "",
+      status: record.status,
+      payables: String(payable(record)),
+      unusedCredits: String(unusedCredits(record)),
+    };
+    return values[key] ?? "";
+  };
+  const filtered = useMemo(() => {
+    const viewStatus = view.startsWith("All")
+      ? ""
+      : view.startsWith("Inactive")
+        ? "inactive"
+        : "active";
+    const result = catalog.filter((record) => {
+      const text =
+        `${record.title} ${record.party} ${Object.values(record.meta ?? {}).join(" ")}`.toLowerCase();
+      return (
+        text.includes(query.toLowerCase()) &&
+        (!viewStatus || record.status.toLowerCase() === viewStatus) &&
+        Object.entries(filters).every(
+          ([key, value]) =>
+            !value ||
+            filterValue(record, key)
+              .toLowerCase()
+              .includes(value.toLowerCase()),
+        )
+      );
+    });
+    const value = (record: AppRecord): string | number => {
+      if (sortKey === "payables") return payable(record);
+      if (sortKey === "unusedCredits") return unusedCredits(record);
+      if (sortKey === "created")
+        return (
+          Date.parse(record.createdAt ?? `${record.date}T00:00:00.000Z`) || 0
+        );
+      if (sortKey === "modified")
+        return (
+          Date.parse(
+            record.lastModifiedAt ??
+              record.createdAt ??
+              `${record.date}T00:00:00.000Z`,
+          ) || 0
+        );
+      return filterValue(record, sortKey);
+    };
+    return result.sort((left, right) => {
+      const a = value(left),
+        b = value(right);
+      return typeof a === "number" && typeof b === "number"
+        ? b - a
+        : String(a).localeCompare(String(b));
+    });
+  }, [catalog, filters, query, records, sortKey, view]);
+  const importLocalRows = (
+    rows: Record<string, string>[],
+    importKind: ImportKind,
+    duplicateMode: DuplicateMode,
+  ): ImportResult => {
+    let added = 0;
+    let skipped = 0;
+    let issues = 0;
+    const working = [...catalog];
+    const localId = (prefix: string) =>
+      `${prefix}-LOCAL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const statusFor = (value: string | undefined) =>
+      value?.trim().toLowerCase() === "inactive" ? "Inactive" : "Active";
+
+    for (const row of rows) {
+      if (importKind === "vendor_contacts") {
+        const vendorName = (row.vendorName ?? "").trim().toLowerCase();
+        const vendor = working.find(
+          (record) =>
+            record.kind === "vendors" &&
+            [record.title, record.meta?.company ?? ""].some(
+              (name) => name.trim().toLowerCase() === vendorName,
+            ),
+        );
+        if (!vendor) {
+          skipped += 1;
+          issues += 1;
+          continue;
+        }
+        const contacts = parse<Contact[]>(vendor.meta?.contactPersons, []);
+        const email = (row.email ?? "").trim().toLowerCase();
+        const firstName = (row.firstName ?? "").trim();
+        const lastName = (row.lastName ?? "").trim();
+        const workPhone = (row.workPhone ?? "").trim();
+        const mobile = (row.mobile ?? "").trim();
+        const rowPhone = (workPhone || mobile).replace(/\D/g, "");
+        const duplicateIndex = contacts.findIndex((contact) => {
+          if (email) return contact.email.trim().toLowerCase() === email;
+          if (!firstName || !lastName || !rowPhone) return false;
+          const existingPhone = (contact.workPhone || contact.mobile).replace(
+            /\D/g,
+            "",
+          );
+          return (
+            contact.firstName.trim().toLowerCase() ===
+              firstName.toLowerCase() &&
+            contact.lastName.trim().toLowerCase() === lastName.toLowerCase() &&
+            existingPhone === rowPhone
+          );
+        });
+        if (duplicateIndex >= 0 && duplicateMode === "skip") {
+          skipped += 1;
+          continue;
+        }
+        const contact: Contact = {
+          id:
+            duplicateIndex >= 0 && duplicateMode === "overwrite"
+              ? contacts[duplicateIndex].id
+              : localId("CONTACT"),
+          salutation: "",
+          firstName,
+          lastName,
+          email: (row.email ?? "").trim(),
+          workPhone,
+          mobile,
+          skype: "",
+          designation: "",
+          department: "",
+        };
+        const nextContacts = [...contacts];
+        if (duplicateIndex >= 0 && duplicateMode === "overwrite")
+          nextContacts[duplicateIndex] = contact;
+        else nextContacts.push(contact);
+        const updated = {
+          ...vendor,
+          meta: {
+            ...vendor.meta,
+            contactPersons: JSON.stringify(nextContacts),
+          },
+        };
+        updateRecord(vendor.id, { meta: updated.meta });
+        working[working.findIndex((record) => record.id === vendor.id)] =
+          updated;
+        added += 1;
+        continue;
+      }
+
+      if (importKind === "vendors") {
+        const displayName = (row.displayName ?? "").trim();
+        if (!displayName) {
+          skipped += 1;
+          issues += 1;
+          continue;
+        }
+        const email = (row.email ?? "").trim().toLowerCase();
+        const match = working.find(
+          (record) =>
+            record.kind === "vendors" &&
+            (record.title.toLowerCase() === displayName.toLowerCase() ||
+              (email && record.meta?.email?.toLowerCase() === email)),
+        );
+        if (match && duplicateMode === "skip") {
+          skipped += 1;
+          continue;
+        }
+        const company = (row.company ?? "").trim() || displayName;
+        const meta = {
+          ...(match?.meta ?? {}),
+          displayName,
+          company,
+          firstName: (row.firstName ?? "").trim(),
+          lastName: (row.lastName ?? "").trim(),
+          email: (row.email ?? "").trim(),
+          phone: (row.phone ?? "").trim(),
+          mobile: (row.mobile ?? "").trim(),
+          language: match?.meta?.language ?? "English",
+          currency: match?.meta?.currency ?? "ZMW - Zambian Kwacha",
+          paymentTerms: match?.meta?.paymentTerms ?? "Due on Receipt",
+          portalStatus: match?.meta?.portalStatus ?? "Not invited",
+          reportingTags: match?.meta?.reportingTags ?? "[]",
+          contactPersons: match?.meta?.contactPersons ?? "[]",
+          bankAccounts: match?.meta?.bankAccounts ?? "[]",
+        };
+        const next: AppRecord = {
+          id:
+            match && duplicateMode === "overwrite" ? match.id : localId("VEND"),
+          kind: "vendors",
+          title: displayName,
+          party: company,
+          date: match?.date ?? today(),
+          amount: match?.amount ?? 0,
+          status: statusFor(row.status),
+          meta,
+        };
+        if (match && duplicateMode === "overwrite")
+          updateRecord(match.id, next);
+        else saveRecord(next);
+        if (match && duplicateMode === "overwrite") {
+          working[working.findIndex((record) => record.id === match.id)] = next;
+        } else working.unshift(next);
+        added += 1;
+        continue;
+      }
+
+      const name = (row.name ?? "").trim();
+      if (!name) {
+        skipped += 1;
+        issues += 1;
+        continue;
+      }
+      const sku = (row.sku ?? "").trim();
+      const match = working.find(
+        (record) =>
+          record.kind === "items" &&
+          ((sku && record.meta?.sku?.toLowerCase() === sku.toLowerCase()) ||
+            record.title.toLowerCase() === name.toLowerCase()),
+      );
+      if (match && duplicateMode === "skip") {
+        skipped += 1;
+        continue;
+      }
+      const rate = parseNonNegativeAmount(String(row.rate ?? ""));
+      if (rate === null) {
+        skipped += 1;
+        issues += 1;
+        continue;
+      }
+      const next: AppRecord = {
+        id: match && duplicateMode === "overwrite" ? match.id : localId("ITEM"),
+        kind: "items",
+        title: name,
+        party: "Catalog",
+        date: match?.date ?? today(),
+        amount: rate,
+        status: statusFor(row.status),
+        meta: {
+          ...(match?.meta ?? {}),
+          sku,
+          description: (row.description ?? "").trim(),
+          unit: (row.unit ?? "pcs").trim() || "pcs",
+          type: (row.type ?? "Goods").trim() || "Goods",
+          account: match?.meta?.account ?? "Cost of Goods Sold",
+        },
+      };
+      if (match && duplicateMode === "overwrite") updateRecord(match.id, next);
+      else saveRecord(next);
+      if (match && duplicateMode === "overwrite") {
+        working[working.findIndex((record) => record.id === match.id)] = next;
+      } else working.unshift(next);
+      added += 1;
+    }
+    notify(
+      `${added} ${importKind === "vendor_contacts" ? "contact row(s)" : kind === "vendors" ? "vendor(s)" : "item(s)"} added/updated in the local demo; ${skipped} skipped. No Zoho records changed.`,
+    );
+    return { added, skipped, issues };
+  };
+  const exportLocal = (scope: ExportScope) => {
+    const target =
+      scope === "all"
+        ? catalog
+        : scope === "selected"
+          ? catalog.filter((record) => selected.includes(record.id))
+          : filtered;
+    const exportColumns =
+      scope === "all"
+        ? columns
+        : columns.filter((column) => visibleColumns.includes(column.key));
+    const cell = (record: AppRecord, key: string) => {
+      if (key === "name") return record.title;
+      if (key === "company") return record.meta?.company ?? record.party;
+      if (key === "email") return record.meta?.email ?? "";
+      if (key === "phone") return record.meta?.phone ?? "";
+      if (key === "payables") return payable(record).toFixed(2);
+      if (key === "unusedCredits") return unusedCredits(record).toFixed(2);
+      if (key === "rate") return String(record.amount);
+      if (key === "sku" || key === "description" || key === "unit")
+        return record.meta?.[key] ?? "";
+      return record.status;
+    };
+    downloadCsv(
+      `${kind}-${scope === "all" ? "all" : scope === "view" ? "current-view" : "selected"}.csv`,
+      [
+        exportColumns.map((column) => column.label),
+        ...target.map((record) =>
+          exportColumns.map((column) => cell(record, column.key)),
+        ),
+      ],
+    );
+    notify(
+      `Downloaded ${target.length} local demo ${label.toLowerCase()} record(s).`,
+    );
+  };
+  const renderCell = (record: AppRecord, key: string) => {
+    if (key === "name")
+      return (
+        <>
+          <Link
+            className="font-medium text-blue-600 hover:text-blue-700"
+            to={`/${kind}/${record.id}`}
+          >
+            {record.title}
+          </Link>
+          <div className="mt-0.5 text-[11px] text-slate-400">{record.id}</div>
+        </>
+      );
+    if (key === "status") return <Badge>{record.status}</Badge>;
+    if (key === "company") return record.meta?.company ?? record.party;
+    if (key === "email") return record.meta?.email ?? "—";
+    if (key === "phone") return record.meta?.phone ?? "—";
+    if (key === "payables") return money(payable(record));
+    if (key === "unusedCredits") return money(unusedCredits(record));
+    if (key === "rate") return money(record.amount);
+    return record.meta?.[key] ?? "—";
+  };
   const remove = () => {
     if (!deleteTarget) return;
     deleteRecord(deleteTarget.id);
+    setSelected((previous) => removeSelectedId(previous, deleteTarget.id));
     notify(
       `${deleteTarget.title} removed from the local catalog. Related demo records were left unchanged.`,
     );
@@ -320,12 +700,40 @@ export function CatalogList({ kind }: { kind: CatalogKind }) {
         subtitle={`${catalog.length} ${label.toLowerCase()} in your local catalog`}
         actions={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => csv(`${kind}.csv`, exportRows)}
-            >
-              <Download size={15} /> Export CSV
-            </Button>
+            <ListTools
+              entity={label}
+              columns={columns}
+              visibleColumns={visibleColumns}
+              onVisibleColumnsChange={setVisibleColumns}
+              columnWidths={columnWidths}
+              onColumnWidthsChange={setColumnWidths}
+              clipText={clipText}
+              onClipTextChange={setClipText}
+              sortOptions={sortOptions}
+              onSort={setSortKey}
+              filterFields={filterFields}
+              activeFilters={filters}
+              onApplyFilters={setFilters}
+              currentView={view}
+              viewOptions={viewOptions}
+              onViewChange={setView}
+              onExport={exportLocal}
+              onImport={importLocalRows}
+              selectedCount={selected.length}
+              onPreferences={() =>
+                navigate(
+                  `/settings/modules/${kind === "vendors" ? "vendors" : "items"}/preferences`,
+                )
+              }
+              onRefresh={() =>
+                notify(`${label} list refreshed in this local preview.`)
+              }
+              onResetWidths={() => {
+                setColumnWidths({});
+                notify("Column widths restored to their default preview size.");
+              }}
+              notify={notify}
+            />
             <Link to={`/${kind}/new`}>
               <Button>
                 <Plus size={16} /> New {kind === "items" ? "item" : "vendor"}
@@ -349,19 +757,21 @@ export function CatalogList({ kind }: { kind: CatalogKind }) {
               aria-label={`Search ${label.toLowerCase()}`}
             />
           </div>
-          <Select
-            aria-label="Filter catalog by status"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            className="w-full sm:w-44"
-          >
-            <option value="all">All statuses</option>
-            {statuses.map((value) => (
-              <option key={value} value={value.toLowerCase()}>
-                {value}
-              </option>
-            ))}
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              aria-label="Saved list view"
+              value={view}
+              onChange={(event) => setView(event.target.value)}
+              className="w-full sm:w-48"
+            >
+              {viewOptions.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
+            </Select>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
+              {filtered.length}
+            </span>
+          </div>
         </div>
         {filtered.length === 0 ? (
           <EmptyState
@@ -377,89 +787,92 @@ export function CatalogList({ kind }: { kind: CatalogKind }) {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse">
+            <table className="w-full min-w-[980px] table-fixed border-collapse">
               <thead>
                 <tr className="table-head">
-                  <th className="table-cell w-10 text-left"></th>
-                  {kind === "items" ? (
-                    <>
-                      <th className="table-cell text-left">Name</th>
-                      <th className="table-cell text-left">SKU</th>
-                      <th className="table-cell text-left">
-                        Purchase description
+                  <th
+                    className="table-cell w-10 text-left"
+                    style={{ width: 40 }}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Select all visible ${label}`}
+                      checked={
+                        filtered.length > 0 &&
+                        filtered.every((record) => selected.includes(record.id))
+                      }
+                      onChange={(event) =>
+                        setSelected((previous) =>
+                          updateVisibleSelection(
+                            previous,
+                            filtered.map((record) => record.id),
+                            event.target.checked,
+                          ),
+                        )
+                      }
+                    />
+                  </th>
+                  {columns
+                    .filter((column) => visibleColumns.includes(column.key))
+                    .map((column) => (
+                      <th
+                        key={column.key}
+                        style={{
+                          width: `${columnWidths[column.key] ?? column.width}px`,
+                        }}
+                        className={`table-cell ${["rate", "payables", "unusedCredits"].includes(column.key) ? "text-right" : "text-left"}`}
+                      >
+                        <button
+                          className="font-medium hover:text-blue-600"
+                          onClick={() => setSortKey(column.key)}
+                        >
+                          {column.label}
+                        </button>
                       </th>
-                      <th className="table-cell text-right">Purchase rate</th>
-                      <th className="table-cell text-left">Usage unit</th>
-                      <th className="table-cell text-left">Status</th>
-                    </>
-                  ) : (
-                    <>
-                      <th className="table-cell text-left">Display name</th>
-                      <th className="table-cell text-left">Company name</th>
-                      <th className="table-cell text-left">Email</th>
-                      <th className="table-cell text-left">Work phone</th>
-                      <th className="table-cell text-right">Payables (ZMW)</th>
-                      <th className="table-cell text-left">Status</th>
-                    </>
-                  )}
-                  <th className="table-cell text-right">Actions</th>
+                    ))}
+                  <th
+                    className="table-cell sticky right-0 z-10 bg-slate-50 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.4)]"
+                    style={{ width: 90 }}
+                  >
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((record) => (
                   <tr key={record.id} className="group hover:bg-blue-50/30">
-                    <td className="table-cell">
-                      <Icon size={16} className="text-slate-400" />
+                    <td className="table-cell w-10" style={{ width: 40 }}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${record.title}`}
+                        checked={selected.includes(record.id)}
+                        onChange={(event) =>
+                          setSelected((previous) =>
+                            event.target.checked
+                              ? [...previous, record.id]
+                              : previous.filter((id) => id !== record.id),
+                          )
+                        }
+                      />
                     </td>
-                    <td className="table-cell">
-                      <Link
-                        className="font-medium text-blue-600 hover:text-blue-700"
-                        to={`/${kind}/${record.id}`}
-                      >
-                        {record.title}
-                      </Link>
-                      <div className="mt-0.5 text-[11px] text-slate-400">
-                        {record.id}
-                      </div>
-                    </td>
-                    {kind === "items" ? (
-                      <>
-                        <td className="table-cell text-slate-600">
-                          {record.meta?.sku ?? "—"}
+                    {columns
+                      .filter((column) => visibleColumns.includes(column.key))
+                      .map((column) => (
+                        <td
+                          key={column.key}
+                          title={String(filterValue(record, column.key))}
+                          style={{
+                            width: `${columnWidths[column.key] ?? column.width}px`,
+                          }}
+                          className={`table-cell text-slate-600 ${["rate", "payables", "unusedCredits"].includes(column.key) ? "text-right" : ""} ${clipText ? "max-w-[240px] truncate whitespace-nowrap" : "whitespace-normal"}`}
+                        >
+                          {renderCell(record, column.key)}
                         </td>
-                        <td className="table-cell max-w-xs truncate text-slate-600">
-                          {record.meta?.description ?? "—"}
-                        </td>
-                        <td className="table-cell text-right font-medium">
-                          {money(record.amount)}
-                        </td>
-                        <td className="table-cell text-slate-600">
-                          {record.meta?.unit ?? "—"}
-                        </td>
-                        <td className="table-cell">
-                          <Badge>{record.status}</Badge>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="table-cell text-slate-600">
-                          {record.meta?.company ?? record.party}
-                        </td>
-                        <td className="table-cell text-slate-600">
-                          {record.meta?.email ?? "—"}
-                        </td>
-                        <td className="table-cell text-slate-600">
-                          {record.meta?.phone ?? "—"}
-                        </td>
-                        <td className="table-cell text-right">
-                          {money(payable(record))}
-                        </td>
-                        <td className="table-cell">
-                          <Badge>{record.status}</Badge>
-                        </td>
-                      </>
-                    )}
-                    <td className="table-cell">
+                      ))}
+                    <td
+                      className="table-cell sticky right-0 z-10 bg-white shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.4)]"
+                      style={{ width: 90 }}
+                    >
                       <div className="flex justify-end gap-1">
                         <Link
                           to={`/${kind}/${record.id}`}
