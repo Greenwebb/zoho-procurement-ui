@@ -132,11 +132,7 @@ export function AppShell() {
               {results.map((record) => (
                 <Link
                   key={record.id}
-                  to={
-                    record.kind === "batch-payments"
-                      ? `/batch-payments?record=${encodeURIComponent(record.id)}`
-                      : `/${record.kind}/${record.id}/edit`
-                  }
+                  to={`/${record.kind}/${encodeURIComponent(record.id)}`}
                   className="block px-3 py-2 hover:bg-blue-50"
                 >
                   <strong className="block text-xs text-blue-500">

@@ -12,8 +12,11 @@ import { RecordList } from "../features/RecordList";
 import { TransactionEditor } from "../features/TransactionEditor";
 import { RfqWizard } from "../features/RfqWizard";
 import { CatalogList, CatalogEditor } from "../features/Catalogs";
+import { CatalogDetail } from "../features/CatalogDetail";
+import { RecordDetail } from "../features/RecordDetail";
 import { Budgets, Analytics, PayablesInbox } from "../features/Insights";
 import { BatchPayments } from "../features/BatchPayments";
+import { BatchPaymentEditor } from "../features/BatchPaymentEditor";
 import { Settings } from "../features/Settings";
 import { modules, type ModuleKey } from "../data/modules";
 
@@ -33,6 +36,12 @@ function WizardRoute() {
 function CatalogRoute({ kind }: { kind: "items" | "vendors" }) {
   const location = useLocation();
   return <CatalogEditor key={location.pathname} kind={kind} />;
+}
+function RecordRoute({ kind }: { kind: string }) {
+  const location = useLocation();
+  return (
+    <RecordDetail key={`${location.pathname}${location.search}`} kind={kind} />
+  );
 }
 export function App() {
   return (
@@ -54,6 +63,17 @@ export function App() {
                 key={module.key}
                 path={`/${module.key}`}
                 element={<RecordList key={module.key} kind={module.key} />}
+              />
+            ))}
+            {Object.values(modules).map((module) => (
+              <Route
+                key={`${module.key}-detail`}
+                path={`/${module.key}/:id`}
+                element={
+                  <div className="p-5 sm:p-8">
+                    <RecordRoute kind={module.key} />
+                  </div>
+                }
               />
             ))}
             {Object.values(modules)
@@ -109,6 +129,25 @@ export function App() {
                 }
               />,
             ])}
+            {(["items", "vendors"] as const).map((kind) => (
+              <Route
+                key={`${kind}-detail`}
+                path={`/${kind}/:id`}
+                element={
+                  <div className="p-5 sm:p-8">
+                    <CatalogDetail kind={kind} />
+                  </div>
+                }
+              />
+            ))}
+            <Route
+              path="/vendors/:id/:tab"
+              element={
+                <div className="p-5 sm:p-8">
+                  <CatalogDetail kind="vendors" />
+                </div>
+              }
+            />
             <Route
               path="/budgets"
               element={
@@ -138,6 +177,18 @@ export function App() {
               element={
                 <div className="p-5 sm:p-8">
                   <BatchPayments />
+                </div>
+              }
+            />
+            <Route
+              path="/batch-payments/:id/edit"
+              element={<BatchPaymentEditor />}
+            />
+            <Route
+              path="/batch-payments/:id"
+              element={
+                <div className="p-5 sm:p-8">
+                  <RecordRoute kind="batch-payments" />
                 </div>
               }
             />

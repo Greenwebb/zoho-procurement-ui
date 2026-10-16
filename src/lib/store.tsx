@@ -6,9 +6,11 @@ import {
   type ReactNode,
 } from "react";
 import { CheckCircle2, X } from "lucide-react";
+import { inferVendorId } from "./vendor-links";
 
 export type Line = {
   id: string;
+  itemId?: string;
   name: string;
   quantity: number;
   rate: number;
@@ -77,6 +79,9 @@ export const fixtures: AppRecord[] = [
       unit: item.unit,
       sku: `SKU-${index + 1}`,
       account: "Office Supplies",
+      type: "Goods",
+      description: `${item.name} for day-to-day operations`,
+      preferredVendor: vendors[index % vendors.length],
     },
   })),
   ...vendors.map((name, index) => ({
@@ -87,7 +92,25 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 0,
     status: "Active",
-    meta: { email: `supplier${index + 1}@example.test`, currency: "ZMW" },
+    meta: {
+      email: [
+        "orders@northstar.example",
+        "billing@copperline.example",
+        "accounts@atlas.example",
+      ][index],
+      currency: "ZMW - Zambian Kwacha",
+      company: name,
+      displayName: name,
+      phone: ["+260 211 555 010", "+260 211 555 011", "+260 211 555 012"][
+        index
+      ],
+      language: "English",
+      paymentTerms: "Due on Receipt",
+      portalStatus: "Not invited",
+      reportingTags: "[]",
+      contactPersons: "[]",
+      bankAccounts: "[]",
+    },
   })),
   {
     id: "PR-00001",
@@ -98,9 +121,17 @@ export const fixtures: AppRecord[] = [
     amount: 15900,
     status: "Pending Approval",
     lines: [
-      { id: "1", name: "Office chair", quantity: 6, rate: 1250, unit: "pcs" },
+      {
+        id: "1",
+        itemId: "ITEM-001",
+        name: "Office chair",
+        quantity: 6,
+        rate: 1250,
+        unit: "pcs",
+      },
       {
         id: "2",
+        itemId: "ITEM-002",
         name: "Business laptop",
         quantity: 1,
         rate: 8400,
@@ -134,6 +165,18 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 7500,
     status: "Draft",
+    lines: [
+      {
+        id: "po-line-1",
+        itemId: "ITEM-001",
+        name: "Office chair",
+        quantity: 6,
+        rate: 1250,
+        unit: "pcs",
+        account: "Equipment",
+      },
+    ],
+    meta: { vendorId: "VEND-001", reference: "PO-00001" },
   },
   {
     id: "RCV-00001",
@@ -143,6 +186,18 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 1700,
     status: "Received",
+    lines: [
+      {
+        id: "receive-line-1",
+        itemId: "ITEM-003",
+        name: "Printer paper",
+        quantity: 20,
+        rate: 85,
+        unit: "box",
+        account: "Office Supplies",
+      },
+    ],
+    meta: { vendorId: "VEND-001", source: "PO-00001", reference: "RCV-00001" },
   },
   {
     id: "BILL-00001",
@@ -152,6 +207,22 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 1700,
     status: "Open",
+    lines: [
+      {
+        id: "bill-line-1",
+        itemId: "ITEM-003",
+        name: "Printer paper",
+        quantity: 20,
+        rate: 85,
+        unit: "box",
+        account: "Office Supplies",
+      },
+    ],
+    meta: {
+      vendorId: "VEND-001",
+      reference: "BILL-00001",
+      paymentTerms: "Due on Receipt",
+    },
   },
   {
     id: "RB-00001",
@@ -161,6 +232,17 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 2400,
     status: "Active",
+    lines: [
+      {
+        id: "recurring-line-1",
+        name: "Monthly equipment service",
+        quantity: 1,
+        rate: 2400,
+        unit: "month",
+        account: "Services",
+      },
+    ],
+    meta: { vendorId: "VEND-003", frequency: "Monthly", reference: "RB-00001" },
   },
   {
     id: "PAY-00001",
@@ -170,6 +252,11 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 850,
     status: "Paid",
+    meta: {
+      vendorId: "VEND-001",
+      paymentMode: "Bank Transfer",
+      account: "Operating Account",
+    },
   },
   {
     id: "VC-00001",
@@ -179,21 +266,53 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 170,
     status: "Open",
+    meta: { vendorId: "VEND-001", creditReason: "Returned supplies" },
   },
 ];
 export function saveToRecords(records: AppRecord[], record: AppRecord) {
   return [record, ...records.filter((existing) => existing.id !== record.id)];
 }
+export function removeFromRecords(records: AppRecord[], id: string) {
+  return records.filter((record) => record.id !== id);
+}
 type Store = {
   records: AppRecord[];
   saveRecord: (record: AppRecord) => void;
   updateRecord: (id: string, updates: Partial<AppRecord>) => void;
+  deleteRecord: (id: string) => void;
   notify: (message: string) => void;
 };
 const Context = createContext<Store | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [records, setRecords] = useStoredState("records.v1", fixtures);
   const [toast, setToast] = useState("");
+  useEffect(() => {
+    const vendors = records.filter((record) => record.kind === "vendors");
+    const items = records.filter((record) => record.kind === "items");
+    let changed = false;
+    const migrated = records.map((record) => {
+      let meta = record.meta;
+      const vendorId = inferVendorId(record, vendors);
+      if (vendorId && vendorId !== record.meta?.vendorId) {
+        meta = { ...meta, vendorId };
+        changed = true;
+      }
+      let lines = record.lines;
+      if (lines?.some((line) => !line.itemId)) {
+        lines = lines.map((line) => {
+          if (line.itemId) return line;
+          const item = items.find((candidate) => candidate.title === line.name);
+          return item ? { ...line, itemId: item.id } : line;
+        });
+        if (lines.some((line, index) => line !== record.lines?.[index]))
+          changed = true;
+      }
+      return meta !== record.meta || lines !== record.lines
+        ? { ...record, meta, lines }
+        : record;
+    });
+    if (changed) setRecords(migrated);
+  }, [records, setRecords]);
   useEffect(() => {
     if (toast) {
       const timeout = setTimeout(() => setToast(""), 5000);
@@ -209,9 +328,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         record.id === id ? { ...record, ...updates } : record,
       ),
     );
+  const deleteRecord = (id: string) =>
+    setRecords((previous) => removeFromRecords(previous, id));
   return (
     <Context.Provider
-      value={{ records, saveRecord, updateRecord, notify: setToast }}
+      value={{
+        records,
+        saveRecord,
+        updateRecord,
+        deleteRecord,
+        notify: setToast,
+      }}
     >
       {children}
       {toast && (

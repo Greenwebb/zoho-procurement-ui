@@ -32,6 +32,10 @@ The screenshots are clean local renders of pages inspected in the authenticated 
 - `01_my_requests.png` and `08_procurement_purchase_requests.png` are both included because the employee-facing request screen and the Procurement management screen are different views, not duplicates.
 - List/form pairs are shown where the product has distinct list and creation pages. A blank form is a page-state capture only; it does not mean a transaction was completed.
 
+## Supplemental record-detail reference
+
+Read-only follow-up inspection of a Vendor profile and an Item detail revealed additional post-table screens and CRUD affordances. Their sanitized structure, tabs, fields, and capture boundaries are documented in [REFERENCE_VENDOR_DETAIL.md](REFERENCE_VENDOR_DETAIL.md). The live record's contact, bank, and financial values were not copied into the frontend fixtures.
+
 ## Settings and configuration screenshots
 
 | Area                                                     | Screenshot files                                                                                                                                                                                                                                                 |

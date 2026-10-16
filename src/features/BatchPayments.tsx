@@ -1,7 +1,16 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Check, ChevronRight, Inbox, WalletCards } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Check,
+  ChevronRight,
+  Eye,
+  Inbox,
+  Pencil,
+  Trash2,
+  WalletCards,
+} from "lucide-react";
 import { billBalance } from "../lib/payables";
+import { DeleteConfirm } from "../components/data/DetailPrimitives";
 import {
   Badge,
   Button,
@@ -13,10 +22,8 @@ import {
 import { money, today, useApp, type AppRecord } from "../lib/store";
 
 export function BatchPayments() {
-  const { records, saveRecord, notify } = useApp();
-  const [searchParams] = useSearchParams();
+  const { records, saveRecord, deleteRecord, notify } = useApp();
   const navigate = useNavigate();
-  const queryRecord = searchParams.get("record");
   const bills = records.filter(
     (record) =>
       record.kind === "bills" &&
@@ -28,7 +35,7 @@ export function BatchPayments() {
     .sort((a, b) => b.id.localeCompare(a.id));
   const [selected, setSelected] = useState<string[]>([]);
   const [review, setReview] = useState(false);
-  const batch = batches.find((record) => record.id === queryRecord);
+  const [pendingDelete, setPendingDelete] = useState<AppRecord | null>(null);
   const selectedBills = bills.filter((bill) => selected.includes(bill.id));
   const total = selectedBills.reduce(
     (sum, bill) => sum + billBalance(records, bill),
@@ -65,14 +72,17 @@ export function BatchPayments() {
     setReview(false);
     setSelected([]);
     notify("Batch payment prepared locally. No payment was sent.");
-    navigate(`/batch-payments?record=${encodeURIComponent(record.id)}`);
+    navigate(`/batch-payments/${encodeURIComponent(record.id)}`);
   };
-  const linkedBills = (batch?.meta?.billIds || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((id) => records.find((record) => record.id === id))
-    .filter((record): record is AppRecord => Boolean(record));
+  const deleteBatch = () => {
+    if (!pendingDelete) return;
+    deleteRecord(pendingDelete.id);
+    notify(
+      `${pendingDelete.id} removed from local demo data. Linked bills remain unchanged.`,
+    );
+    setPendingDelete(null);
+  };
+
   return (
     <div>
       <PageHeader
@@ -196,36 +206,69 @@ export function BatchPayments() {
         ) : (
           <div className="divide-y divide-slate-100">
             {batches.map((item) => (
-              <button
+              <article
                 key={item.id}
-                onClick={() =>
-                  navigate(
-                    `/batch-payments?record=${encodeURIComponent(item.id)}`,
-                  )
-                }
-                className="flex w-full flex-col gap-2 px-5 py-4 text-left hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 px-5 py-4 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
               >
-                <span>
-                  <span className="font-medium text-blue-600">{item.id}</span>
-                  <span className="ml-2 text-sm text-slate-700">
-                    {item.title}
+                <Link
+                  to={`/batch-payments/${encodeURIComponent(item.id)}`}
+                  aria-label={`Open batch summary ${item.id}`}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-4"
+                >
+                  <span className="min-w-0">
+                    <span className="font-medium text-blue-600">{item.id}</span>
+                    <span className="ml-2 text-sm text-slate-700">
+                      {item.title}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      {item.date} ·{" "}
+                      {item.meta?.billIds?.split(",").filter(Boolean).length ||
+                        0}{" "}
+                      bills
+                    </span>
                   </span>
-                  <span className="mt-1 block text-xs text-slate-400">
-                    {item.date} ·{" "}
-                    {item.meta?.billIds?.split(",").filter(Boolean).length || 0}{" "}
-                    bills
+                  <span className="flex shrink-0 items-center gap-3">
+                    <Badge>{item.status}</Badge>
+                    <strong>{money(item.amount)}</strong>
+                    <ChevronRight size={15} className="text-slate-400" />
                   </span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <Badge>{item.status}</Badge>
-                  <strong>{money(item.amount)}</strong>
-                  <ChevronRight size={15} className="text-slate-400" />
-                </span>
-              </button>
+                </Link>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Link
+                    to={`/batch-payments/${encodeURIComponent(item.id)}`}
+                    aria-label={`View batch ${item.id}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <Eye size={14} /> View
+                  </Link>
+                  <Link
+                    to={`/batch-payments/${encodeURIComponent(item.id)}/edit`}
+                    aria-label={`Edit batch ${item.id}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <Pencil size={14} /> Edit
+                  </Link>
+                  <Button
+                    variant="danger"
+                    aria-label={`Delete batch ${item.id}`}
+                    className="!px-3 !py-2 text-xs"
+                    onClick={() => setPendingDelete(item)}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </Button>
+                </div>
+              </article>
             ))}
           </div>
         )}
       </Panel>
+      <DeleteConfirm
+        open={Boolean(pendingDelete)}
+        title="Delete prepared batch?"
+        description={`${pendingDelete?.id ?? "This batch"} will be removed from local demo data. Linked bills remain unchanged.`}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={deleteBatch}
+      />
       {review && (
         <Modal title="Review batch payment" onClose={() => setReview(false)}>
           <div className="space-y-4">
@@ -264,65 +307,6 @@ export function BatchPayments() {
                 Prepare batch
               </Button>
             </div>
-          </div>
-        </Modal>
-      )}
-      {batch && (
-        <Modal
-          title={`${batch.id} · Batch detail`}
-          onClose={() => navigate("/batch-payments", { replace: true })}
-        >
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Status</span>
-              <Badge>{batch.status}</Badge>
-            </div>
-            <div className="rounded-md border border-slate-200">
-              {linkedBills.length ? (
-                linkedBills.map((bill) => (
-                  <div
-                    key={bill.id}
-                    className="flex items-center justify-between border-b border-slate-100 px-3 py-3 text-sm last:border-0"
-                  >
-                    <span>
-                      {bill.id}
-                      <span className="ml-2 text-xs text-slate-400">
-                        {bill.party}
-                      </span>
-                    </span>
-                    <strong>
-                      {money(
-                        (
-                          JSON.parse(batch.meta?.allocations || "[]") as {
-                            id: string;
-                            amount: number;
-                          }[]
-                        ).find((item) => item.id === bill.id)?.amount ??
-                          bill.amount,
-                      )}
-                    </strong>
-                  </div>
-                ))
-              ) : (
-                <p className="p-3 text-sm text-slate-500">
-                  This batch does not contain linked bill details.
-                </p>
-              )}
-              <div className="flex items-center justify-between bg-slate-50 px-3 py-3 font-semibold">
-                <span>Batch total</span>
-                <span>{money(batch.amount)}</span>
-              </div>
-            </div>
-            <p className="rounded bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              Prepared locally on {batch.date}. This is not an actual payment
-              instruction.
-            </p>
-            <Button
-              variant="secondary"
-              onClick={() => navigate("/batch-payments", { replace: true })}
-            >
-              Close details
-            </Button>
           </div>
         </Modal>
       )}

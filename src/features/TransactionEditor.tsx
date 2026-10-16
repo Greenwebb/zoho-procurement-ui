@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Link,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -38,6 +39,7 @@ import {
 type Draft = {
   title: string;
   party: string;
+  vendorId: string;
   date: string;
   expectedDate: string;
   reference: string;
@@ -71,6 +73,7 @@ export function TransactionEditor({
   const config = modules[kind];
   const { id } = useParams();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { records, saveRecord, updateRecord, notify } = useApp();
   const existing = records.find(
@@ -90,6 +93,45 @@ export function TransactionEditor({
   } catch {
     /* Use readable record defaults. */
   }
+  const queryVendorId = searchParams.get("vendor") || "";
+  const queryVendor = records.find(
+    (record) => record.id === queryVendorId && record.kind === "vendors",
+  );
+  const partyHint =
+    typeof savedDraft.party === "string"
+      ? savedDraft.party
+      : existing?.party ||
+        queryVendor?.title ||
+        (source && source.kind !== "requests" ? source.party : "");
+  const vendorFromParty = records.find(
+    (record) => record.kind === "vendors" && record.title === partyHint,
+  );
+  const savedVendorById = records.find(
+    (record) =>
+      record.kind === "vendors" &&
+      typeof savedDraft.vendorId === "string" &&
+      record.id === savedDraft.vendorId &&
+      (!savedDraft.party || record.title === savedDraft.party),
+  );
+  const preferredVendorId = existing?.meta?.vendorId || queryVendorId;
+  const preferredVendor = records.find(
+    (record) => record.kind === "vendors" && record.id === preferredVendorId,
+  );
+  const linkedVendor =
+    vendorFromParty || savedVendorById || preferredVendor || queryVendor;
+  const fallbackLines = existing?.lines?.length
+    ? existing.lines
+    : source?.lines?.length
+      ? source.lines
+      : [
+          {
+            id: crypto.randomUUID(),
+            name: existing?.title || source?.title || "",
+            quantity: 1,
+            rate: existing?.amount ?? source?.amount ?? 0,
+            unit: "pcs",
+          },
+        ];
   const initial: Draft = {
     title:
       existing?.title ||
@@ -97,44 +139,49 @@ export function TransactionEditor({
       inboxFilename.replace(/\.[^.]+$/, "") ||
       "",
     party:
+      linkedVendor?.title ||
       existing?.party ||
-      (source && source.kind !== "requests" ? source.party : ""),
+      (source && source.kind !== "requests" ? source.party : "") ||
+      "",
     date: existing?.date || today(),
-    expectedDate: "",
-    reference: sourceId,
-    reason: "",
-    creditReason: "",
-    applyToBill: existing?.meta?.appliedBillId || "",
-    notes: "",
-    terms: "",
+    expectedDate: existing?.meta?.dueDate ?? "",
+    reference: existing?.meta?.reference ?? sourceId,
+    reason: existing?.meta?.reason ?? "",
+    creditReason: existing?.meta?.creditReason ?? "",
+    applyToBill: existing?.meta?.appliedBillId ?? "",
+    notes: existing?.meta?.notes ?? "",
+    terms: existing?.meta?.terms ?? "",
     address: "Main Office, Lusaka, Zambia",
     deliveryTo: "Organization",
     shipment: "Standard delivery",
-    paymentTerms: "Due on Receipt",
-    frequency: "Monthly",
-    endDate: "",
+    paymentTerms: existing?.meta?.paymentTerms ?? "Due on Receipt",
+    frequency: existing?.meta?.frequency ?? "Monthly",
+    endDate: existing?.meta?.endDate ?? "",
     source: sourceId,
-    billId: kind === "payments" && source?.kind === "bills" ? sourceId : "",
-    paymentMode: "Bank Transfer",
-    account: "Operating Account",
-    amount: existing?.amount || source?.amount || 0,
+    billId:
+      existing?.meta?.billId ??
+      (kind === "payments" && source?.kind === "bills" ? sourceId : ""),
+    paymentMode: existing?.meta?.paymentMode ?? "Bank Transfer",
+    account: existing?.meta?.account ?? "Operating Account",
+    amount: existing?.amount ?? source?.amount ?? 0,
     discount: 0,
     tax: 0,
     inclusive: false,
     files: inboxFilename ? [inboxFilename] : [],
-    lines: existing?.lines ||
-      source?.lines || [
-        {
-          id: crypto.randomUUID(),
-          name: "",
-          quantity: 1,
-          rate: 0,
-          unit: "pcs",
-        },
-      ],
     ...savedDraft,
+    lines:
+      Array.isArray(savedDraft.lines) && savedDraft.lines.length
+        ? savedDraft.lines
+        : kind === "payments"
+          ? (existing?.lines ?? [])
+          : fallbackLines,
+    vendorId:
+      typeof savedDraft.vendorId === "string"
+        ? (savedVendorById?.id ??
+          (savedDraft.vendorId === "" ? "" : (linkedVendor?.id ?? "")))
+        : (linkedVendor?.id ?? ""),
   };
-  const key = `editor.${kind}.${id || sourceId || "new"}`;
+  const key = `editor.${kind}.${id || sourceId || queryVendorId || "new"}`;
   const [draft, setDraft] = useStoredState<Draft>(key, initial);
   const [errors, setErrors] = useState<Record<string, string>>({}),
     [dirty, setDirty] = useState(false),
@@ -144,6 +191,18 @@ export function TransactionEditor({
     isPayment = kind === "payments",
     isRecurring = kind === "recurring-bills",
     isCredit = kind === "vendor-credits";
+  const currentVendorId =
+    draft.vendorId ??
+    records.find(
+      (record) => record.kind === "vendors" && record.title === draft.party,
+    )?.id ??
+    "";
+  const vendorIdForRecord = (record?: AppRecord) =>
+    record?.meta?.vendorId ||
+    records.find(
+      (vendor) => vendor.kind === "vendors" && vendor.title === record?.party,
+    )?.id ||
+    "";
   const totals = transactionTotals(
     draft.lines,
     draft.discount,
@@ -169,12 +228,26 @@ export function TransactionEditor({
     setErrors({});
   };
   const entry = searchParams.get("entry");
+  const originVendorId =
+    searchParams.get("fromVendor") || searchParams.get("vendor") || "";
+  const requestedVendorTab = searchParams.get("vendorTab") || "transactions";
+  const vendorTab = [
+    "overview",
+    "comments",
+    "transactions",
+    "mails",
+    "statement",
+  ].includes(requestedVendorTab)
+    ? requestedVendorTab
+    : "transactions";
   const backTo =
-    entry === "procurement" && isRequest
-      ? "/procurement-requests"
-      : entry === "approvals" && isRequest
-        ? "/approvals"
-        : `/${kind}`;
+    !isRequest && originVendorId
+      ? `/vendors/${encodeURIComponent(originVendorId)}/${vendorTab}`
+      : entry === "procurement" && isRequest
+        ? "/procurement-requests"
+        : entry === "approvals" && isRequest
+          ? "/approvals"
+          : `/${kind}`;
   const cancelEditor = () => {
     if (dirty) setCancel(true);
     else navigate(backTo);
@@ -185,6 +258,7 @@ export function TransactionEditor({
       source: value,
       reference: value,
       party: selected?.party || draft.party,
+      vendorId: selected ? vendorIdForRecord(selected) : currentVendorId,
       lines: selected?.lines?.length ? selected.lines : draft.lines,
       title: selected?.title || draft.title,
     });
@@ -260,7 +334,7 @@ export function TransactionEditor({
                     ? "Applied (demo)"
                     : "Available (demo)"
                   : "Open (demo)"
-      : "Draft";
+      : (existing?.status ?? "Draft");
     const record: AppRecord = {
       id: recordId,
       kind,
@@ -278,6 +352,10 @@ export function TransactionEditor({
       meta: {
         ...meta,
         source: draft.source,
+        vendorId: currentVendorId,
+        reference: draft.reference,
+        paymentMode: draft.paymentMode,
+        account: draft.account,
         billId: draft.billId,
         appliedBillId: draft.applyToBill,
         creditReason: draft.creditReason,
@@ -381,12 +459,19 @@ export function TransactionEditor({
             <div className="max-w-xl">
               <Field label="Vendor Name *" error={errors.party}>
                 <VendorSelect
-                  value={draft.party}
-                  onChange={(party) => patch({ party })}
+                  value={currentVendorId}
+                  fallbackLabel={draft.party}
+                  onChange={(vendorId) => {
+                    const vendor = records.find(
+                      (record) =>
+                        record.kind === "vendors" && record.id === vendorId,
+                    );
+                    patch({ vendorId, party: vendor?.title ?? "" });
+                  }}
                 />
               </Field>
               <Link
-                to="/vendors/new"
+                to={`/vendors/new?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`}
                 className="mt-2 block text-xs text-blue-500"
               >
                 + Add a vendor in the shared directory
@@ -534,6 +619,9 @@ export function TransactionEditor({
                       billId: event.target.value,
                       source: event.target.value,
                       party: bill?.party || draft.party,
+                      vendorId: bill
+                        ? vendorIdForRecord(bill)
+                        : currentVendorId,
                       amount: billBalance(records, bill, id),
                     });
                   }}

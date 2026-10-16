@@ -7,10 +7,12 @@ export function VendorSelect({
   value,
   onChange,
   label = "Select a vendor",
+  fallbackLabel,
 }: {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (vendorId: string) => void;
   label?: string;
+  fallbackLabel?: string;
 }) {
   const { records } = useApp();
   const vendors = records.filter((record) => record.kind === "vendors");
@@ -20,9 +22,9 @@ export function VendorSelect({
       value={value}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value="">{label}</option>
+      <option value="">{fallbackLabel || label}</option>
       {vendors.map((vendor) => (
-        <option key={vendor.id} value={vendor.title}>
+        <option key={vendor.id} value={vendor.id}>
           {vendor.title}
         </option>
       ))}
@@ -89,6 +91,7 @@ export function LineEditor({
                         (item) => item.name === event.target.value,
                       );
                       update(line.id, {
+                        itemId: item?.id,
                         name: event.target.value,
                         rate: item?.amount ?? fallback?.rate ?? 0,
                         unit: item?.meta?.unit ?? fallback?.unit ?? "pcs",
@@ -176,6 +179,7 @@ export function LineEditor({
               ...lines,
               {
                 id: crypto.randomUUID(),
+                itemId: undefined,
                 name: "",
                 quantity: 1,
                 rate: 0,

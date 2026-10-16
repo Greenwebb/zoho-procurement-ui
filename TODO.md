@@ -46,13 +46,22 @@
 - Keep a route manifest synchronized with the implemented public UI routes, provide a working development Preview, and maintain clear project documentation for the canonical screen/workflow reuse model.
 - Keep the project frontend-only with no database or server capability enabled; no public publication or GitHub repository connection is requested in this scope.
 
+## 9. Full record details and frontend-only CRUD — Complete
+
+- Keep this work **frontend only**. The user requested that CRUD UI with View, Edit, and Delete states be included, that missing screens beyond the tables be captured, and that selecting a listed record show its additional information. Use the supplied vendor profile as a concrete reference: `https://procurement.zoho.com/app/941677606#/vendors/1486745000000095247?filter_by=Status.Active&per_page=25&sort_column=created_time&sort_order=D`.
+- Provide an explicit View action and a full information/detail screen for vendors, items, requests, RFQs, orders, receives, bills, recurring bills, payments, vendor credits, and prepared batches. Keep Edit as a separate form route, and provide a Delete action with a clear confirmation. List/table and detail actions must operate on local demo records only; do not change or delete live Zoho records.
+- Model the vendor detail UI as one canonical page with Overview, Comments, Transactions, Mails, and Statement tabs. Overview includes contact summary/actions, Billing and Shipping Address, Other Details, Contact Persons, Bank Account Details, Record Info, Payables, and activity history. Transactions includes Bills, Bill Payments, Recurring Bills, Purchase Orders, Purchase Receives, and Vendor Credits. Mails shows an empty/history state; Statement shows date range/filter and a document preview. Do not send email, invite to portal, or submit a statement.
+- Complete the Vendor Edit surface with Other Details, Address, Contact Persons, Bank Details, Custom Fields, Reporting Tags, and Remarks tabs. Address captures separate billing/shipping fields; contact persons support local add/edit/remove; bank-account UI is a non-sensitive local preview that never stores a raw account number; custom fields/tags use explicit empty states when none exist.
+- Preserve screenshot references as shared page/state evidence; do not build a duplicate page for each workflow entry. Reuse canonical detail layouts and entity-specific sections while retaining different business semantics and return context.
+
 ## Outcome evidence
 
-- Outcomes 1–2: shared React shell, 91 declared routes, role-aware request views, and source/return context are wired in `src/app/App.tsx` and `src/features/RecordList.tsx`.
+- Outcomes 1–2: shared React shell, 104 declared routes, role-aware request views, and source/return context are wired in `src/app/App.tsx` and `src/features/RecordList.tsx`.
 - Outcomes 3–4: shared item/vendor records and selectors, entity-specific transaction branches, and one resumable six-stage RFQ wizard with nested dialogs.
 - Outcome 5: configured settings shell, module tabs, template categories, and builders; saves are explicit browser-only preview snapshots, not applied configuration.
-- Outcome 6: fictional fixtures and local storage only; typecheck, 10 model tests, and focused local UI regressions passed without page exceptions.
+- Outcome 6: fictional fixtures and local storage only; typecheck, 14 model tests, and focused local UI regressions passed without page exceptions.
 - Outcome 7: navy/light-sidebar reference styling and mobile navigation, stacked panels, scrollable tables, and adapted wizard navigation; representative desktop/mobile layouts were inspected.
-- Outcome 8: local and managed Preview returned HTTP 200 with the 91-route JSON manifest; static production build passed, server/database remain disabled, and auto-publication remains off. Workflow/reference documentation is self-contained in `docs/`; requests for private reference images/documents are blocked.
+- Outcome 8: local and managed Preview returned HTTP 200 with the 104-route JSON manifest; static production build passed, server/database remain disabled, and auto-publication remains off. Workflow/reference documentation is self-contained in `docs/`; requests for private reference images/documents are blocked.
+- Outcome 9: `CatalogDetail`, `RecordDetail`, and `BatchPaymentEditor` provide list→detail→edit flows with local deletion confirmation, vendor/item subviews, stable vendor IDs, vendor-tab and add-vendor return context, type-specific payment columns, and explicit prepared-batch list actions. Eighteen focused browser regression stages exercised these paths alongside the vendor profile/edit tabs, masked bank-account CRUD, item/transaction details, bill edit preservation, batch detail/edit, and simulated comments. Live Zoho records were inspected read-only; their values were not copied or changed.
 
 See `docs/IMPLEMENTATION_COVERAGE.md` for intentional limitations: first frontend prototype, not complete Zoho parity, no live operations, snapshot-only settings, and no production inventory/accounting engine.

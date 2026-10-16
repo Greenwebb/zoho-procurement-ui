@@ -12,8 +12,9 @@ Build the Zoho Procurement frontend from the existing 118-screenshot collection 
 - Purchase Orders, Purchase Receives, Payables Inbox, Bills, Recurring Bills, Batch Payments, Payments Made, and Vendor Credits.
 - Budgets and Analytics.
 - Organization/configuration settings, module preferences and tabs, PDF/email template categories, automation lists, and the captured field/rule/button/related-list/email-alert/schedule builders.
-- Represent empty, populated, selected, validation, unsaved, and draft states where the references support them. Do not claim captured evidence for additional record actions or post-submission behavior.
-- The 118 images are visual references, not 118 separate React pages. Dropdowns, role variants, wizard stages, and repeat captures reuse canonical page/component definitions.
+- Represent empty, populated, selected, validation, unsaved, draft, and post-list/detail states where the references support them. Keep View, Edit, and Delete as explicit CRUD affordances instead of making a listed record title edit directly.
+- Add canonical record-detail screens for business records. Vendors use a tabbed profile (Overview, Comments, Transactions, Mails, Statement); Items and transaction entities use reusable detail layouts configured with entity-specific fields, lines, lifecycle context, and associated records.
+- The 118 images are visual references, not 118 separate React pages. Dropdowns, role variants, wizard stages, detail tabs, and repeat captures reuse canonical page/component definitions.
 
 ## Implementation approach
 
@@ -28,6 +29,8 @@ This is a frontend prototype, not a Zoho integration: use fictional fixtures and
 - One RFQ draft with six stage components and dialog subflows; basic details is not implemented twice.
 - Shared catalog pickers and editors; caller context/prefill/return location changes, not the page implementation.
 - One settings shell and configurable tab model; shared builders with entity-specific schema.
+- Shared detail header, information sections, activity, and action menu configured by entity. Vendor profile details include contact/address, contact-person, masked bank-account, payables, comments, transaction, mail, statement, and activity sections.
+- Add local-only edit/delete controls and a deletion confirmation. Delete affects only the browser-local demo store; linked records are not cascaded. Never copy live vendor personal/banking data into fixtures or persist a raw account number.
 - Form controls with associated labels, keyboard access, sensible error feedback, and local draft persistence. Buttons either perform an implemented local interaction, navigate, or explicitly explain that a live service is not connected.
 
 ## Reference-led design
@@ -41,8 +44,8 @@ Mobile first: adapt the sidebar into a navigation drawer/bottom entry points, st
 - `src/app/`: routing, providers, layout selection, screen registry.
 - `src/components/ui/`: buttons, fields, select controls, tabs, dialogs, badges, notices.
 - `src/components/layout/`: app shell, top bar, sidebar/mobile navigation, settings shell.
-- `src/components/data/`: table/filter framework, catalog pickers, line editor, totals, attachment controls.
-- `src/features/`: dashboard, requests/approvals, catalogs, RFQ, transactions, budgets/reports, settings/automation.
+- `src/components/data/`: table/filter framework, catalog pickers, line editor, totals, attachment controls, record detail sections.
+- `src/features/`: dashboard, requests/approvals, catalogs, canonical record details, RFQ, transactions, budgets/reports, settings/automation.
 - `src/data/`: fictional fixtures and reference-to-screen mappings.
 - `src/lib/`: browser-local persistence, formatting, validation, workflow context.
 - `public/`: favicon and synchronized `manus-routes.json`; do not expose tenant screenshots publicly.
@@ -54,5 +57,5 @@ Mobile first: adapt the sidebar into a navigation drawer/bottom entry points, st
 1. Confirm this plan, then create outcome-based TODO items.
 2. Configure diagnostics, toolchain, and dependencies. Implement the shell, shared primitives, routes, and fictional/local-state model.
 3. Implement business workflows and settings using the reference mappings. Preserve page reuse and module-specific behavior.
-4. Run type checks, production build, route-manifest checks, and focused interaction checks. Compare rendered desktop/mobile surfaces against the screenshots where needed for reference fidelity. Use a read-only implementation review for this complex app and fix confirmed issues.
+4. Inspect representative live record-detail references read-only, never edit/delete tenant records. Run type checks, production build, route-manifest checks, and focused local interaction checks; compare rendered desktop/mobile detail surfaces against the references and fix confirmed issues.
 5. Run the dev service on `0.0.0.0:3000`, verify the preview, configure the static build, and save a managed checkpoint. Deliver the preview with an honest coverage summary. Do not publish broadly, modify either selected GitHub repository, or connect to Zoho without a separate request.

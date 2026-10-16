@@ -21,6 +21,10 @@
       "title": "New Item"
     },
     {
+      "path": "/items/:id",
+      "title": "Item detail"
+    },
+    {
       "path": "/items/:id/edit",
       "title": "Edit Item"
     },
@@ -33,6 +37,14 @@
       "title": "New Vendor"
     },
     {
+      "path": "/vendors/:id",
+      "title": "Vendor detail"
+    },
+    {
+      "path": "/vendors/:id/:tab",
+      "title": "Vendor detail section"
+    },
+    {
       "path": "/vendors/:id/edit",
       "title": "Edit Vendor"
     },
@@ -43,6 +55,14 @@
     {
       "path": "/batch-payments",
       "title": "Batch Payments"
+    },
+    {
+      "path": "/batch-payments/:id",
+      "title": "Batch payment detail"
+    },
+    {
+      "path": "/batch-payments/:id/edit",
+      "title": "Edit prepared batch"
     },
     {
       "path": "/budgets",
@@ -61,6 +81,10 @@
       "title": "New Purchase Request"
     },
     {
+      "path": "/requests/:id",
+      "title": "Purchase Request detail"
+    },
+    {
       "path": "/requests/:id/edit",
       "title": "Edit Purchase Request"
     },
@@ -71,6 +95,10 @@
     {
       "path": "/purchase-orders/new",
       "title": "New Purchase Order"
+    },
+    {
+      "path": "/purchase-orders/:id",
+      "title": "Purchase Order detail"
     },
     {
       "path": "/purchase-orders/:id/edit",
@@ -85,6 +113,10 @@
       "title": "New Purchase Receive"
     },
     {
+      "path": "/purchase-receives/:id",
+      "title": "Purchase Receive detail"
+    },
+    {
       "path": "/purchase-receives/:id/edit",
       "title": "Edit Purchase Receive"
     },
@@ -95,6 +127,10 @@
     {
       "path": "/bills/new",
       "title": "New Bill"
+    },
+    {
+      "path": "/bills/:id",
+      "title": "Bill detail"
     },
     {
       "path": "/bills/:id/edit",
@@ -109,6 +145,10 @@
       "title": "New Recurring Bill"
     },
     {
+      "path": "/recurring-bills/:id",
+      "title": "Recurring Bill detail"
+    },
+    {
       "path": "/recurring-bills/:id/edit",
       "title": "Edit Recurring Bill"
     },
@@ -119,6 +159,10 @@
     {
       "path": "/payments/new",
       "title": "New Payment"
+    },
+    {
+      "path": "/payments/:id",
+      "title": "Payment detail"
     },
     {
       "path": "/payments/:id/edit",
@@ -133,6 +177,10 @@
       "title": "New Vendor Credit"
     },
     {
+      "path": "/vendor-credits/:id",
+      "title": "Vendor Credit detail"
+    },
+    {
       "path": "/vendor-credits/:id/edit",
       "title": "Edit Vendor Credit"
     },
@@ -143,6 +191,10 @@
     {
       "path": "/rfqs/new",
       "title": "New Request for Quote"
+    },
+    {
+      "path": "/rfqs/:id",
+      "title": "Request for Quote detail"
     },
     {
       "path": "/rfqs/:id/edit",

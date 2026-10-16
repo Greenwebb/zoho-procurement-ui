@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { transactionTotals, validateLines } from "./calculations";
-import { saveToRecords, fixtures, type Line } from "./store";
+import { saveToRecords, removeFromRecords, fixtures, type Line } from "./store";
 import { modules, canonicalRoutes } from "../data/modules";
 import { settingsRoutes } from "../data/settings";
 
 import { billBalance } from "./payables";
+import { belongsToVendor, inferVendorId } from "./vendor-links";
 
 const lines: Line[] = [
   { id: "1", name: "Office chair", quantity: 2, rate: 1250, unit: "pcs" },
@@ -45,6 +46,16 @@ describe("canonical screens and records", () => {
       expect(routes.some((route) => route.path === `/${module.key}/new`)).toBe(
         true,
       );
+    for (const module of Object.values(modules))
+      expect(routes.some((route) => route.path === `/${module.key}/:id`)).toBe(
+        true,
+      );
+    expect(routes.some((route) => route.path === "/vendors/:id/:tab")).toBe(
+      true,
+    );
+    expect(routes.some((route) => route.path === "/batch-payments/:id")).toBe(
+      true,
+    );
     expect(
       routes.some(
         (route) => route.path === "/settings/modules/purchase-orders/fields",
@@ -60,6 +71,13 @@ describe("canonical screens and records", () => {
       "Approved",
     );
   });
+  it("removes only the selected local record without cascading to linked records", () => {
+    const vendor = fixtures.find((record) => record.kind === "vendors")!;
+    const bill = fixtures.find((record) => record.kind === "bills")!;
+    const result = removeFromRecords(fixtures, vendor.id);
+    expect(result.some((record) => record.id === vendor.id)).toBe(false);
+    expect(result.some((record) => record.id === bill.id)).toBe(true);
+  });
   it("uses fictional and distinct catalog identifiers", () => {
     expect(fixtures.filter((record) => record.kind === "items")).toHaveLength(
       3,
@@ -73,6 +91,24 @@ describe("canonical screens and records", () => {
   });
 });
 
+describe("stable catalog relationships", () => {
+  const vendor = fixtures.find((record) => record.kind === "vendors")!;
+  it("matches vendor records by ID and supports legacy name fallback", () => {
+    const order = fixtures.find((record) => record.kind === "purchase-orders")!;
+    expect(belongsToVendor(order, vendor)).toBe(true);
+    expect(inferVendorId({ ...order, meta: undefined }, [vendor])).toBe(
+      vendor.id,
+    );
+  });
+  it("links catalog items to transaction lines using a stable item ID", () => {
+    const item = fixtures.find(
+      (record) => record.kind === "items" && record.title === "Office chair",
+    )!;
+    const order = fixtures.find((record) => record.kind === "purchase-orders")!;
+    expect(order.lines?.some((line) => line.itemId === item.id)).toBe(true);
+  });
+});
+
 describe("payable lifecycle balance", () => {
   const bill = fixtures.find((record) => record.kind === "bills")!;
   const payment = {
@@ -83,6 +119,9 @@ describe("payable lifecycle balance", () => {
     ...fixtures.find((record) => record.kind === "vendor-credits")!,
     meta: { appliedBillId: bill.id },
   };
+  it("does not apply a vendor payment until it is linked to this bill", () => {
+    expect(billBalance(fixtures, bill)).toBe(1700);
+  });
   it("deducts applied payment and credit once, not orders or batch values", () => {
     expect(billBalance([...fixtures, payment, credit], bill)).toBe(680);
   });

@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   ArrowRight,
   FileText,
+  Eye,
   Pencil,
   Check,
   X,
@@ -15,6 +16,7 @@ import {
 import { modules, type ModuleKey } from "../data/modules";
 import { useApp, money, type AppRecord } from "../lib/store";
 import { Badge, Button, EmptyState, Modal, PageHeader } from "../components/ui";
+import { DeleteConfirm } from "../components/data/DetailPrimitives";
 
 export function exportRecords(records: AppRecord[], name: string) {
   const escape = (value: unknown) =>
@@ -53,13 +55,14 @@ export function RecordList({
   approval?: boolean;
 }) {
   const config = modules[kind];
-  const { records, updateRecord, notify } = useApp();
+  const { records, updateRecord, deleteRecord, notify } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState(""),
     [status, setStatus] = useState("All"),
     [sort, setSort] = useState("newest"),
     [selected, setSelected] = useState<string[]>([]),
-    [detail, setDetail] = useState<AppRecord | null>(null);
+    [detail, setDetail] = useState<AppRecord | null>(null),
+    [pendingDelete, setPendingDelete] = useState<AppRecord | null>(null);
   const all = records.filter(
     (record) =>
       record.kind === kind &&
@@ -99,6 +102,15 @@ export function RecordList({
     notify(
       `${record.id} ${next.toLowerCase()} in this demo only. No Zoho record changed.`,
     );
+  };
+  const removeRecord = () => {
+    if (!pendingDelete) return;
+    deleteRecord(pendingDelete.id);
+    notify(
+      `${pendingDelete.id} removed from local demo data. Linked records remain unchanged.`,
+    );
+    setPendingDelete(null);
+    setDetail(null);
   };
   const forward = (record: AppRecord) => {
     const destination: Record<string, string> = {
@@ -287,9 +299,9 @@ export function RecordList({
                     </td>
                     <td className="table-cell text-slate-500">{record.date}</td>
                     <td className="table-cell">
-                      <button
+                      <Link
                         className="text-left"
-                        onClick={() => setDetail(record)}
+                        to={`/${kind}/${record.id}${returnContext}`}
                       >
                         <span className="font-medium text-blue-500">
                           {record.id}
@@ -297,7 +309,7 @@ export function RecordList({
                         <span className="mt-1 block text-xs text-slate-400">
                           {record.title}
                         </span>
-                      </button>
+                      </Link>
                     </td>
                     <td className="table-cell text-slate-600">
                       {record.party}
@@ -342,7 +354,7 @@ export function RecordList({
             }
             action={
               !approval && (
-                <Link to={`/${kind}/new`}>
+                <Link to={`/${kind}/new${returnContext}`}>
                   <Button>
                     <Plus size={15} />
                     New {config.singular}
@@ -380,6 +392,16 @@ export function RecordList({
               <p className="mt-2 text-sm text-slate-500">{detail.party}</p>
             </div>
             <Badge>{detail.status}</Badge>
+          </div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Link to={`/${kind}/${detail.id}${returnContext}`}>
+              <Button variant="secondary">
+                <Eye size={14} /> View full details
+              </Button>
+            </Link>
+            <Button variant="danger" onClick={() => setPendingDelete(detail)}>
+              Delete locally
+            </Button>
           </div>
           <div className="my-6 grid grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4">
             <div>
@@ -443,7 +465,7 @@ export function RecordList({
             >
               <Button variant="secondary">
                 <Pencil size={14} />
-                Edit draft
+                Edit record
               </Button>
             </Link>
             {((detail.kind === "requests" && detail.status === "Approved") ||
@@ -473,6 +495,13 @@ export function RecordList({
           </p>
         </Modal>
       )}
+      <DeleteConfirm
+        open={Boolean(pendingDelete)}
+        title="Delete record?"
+        description={`Delete ${pendingDelete?.id ?? "this record"} from local demo data? Linked records remain unchanged and nothing is deleted from Zoho.`}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={removeRecord}
+      />
     </div>
   );
 }
