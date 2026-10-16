@@ -1,0 +1,58 @@
+# Procurement UI — React and Tailwind implementation plan
+
+## Goal and reference
+
+Build the Zoho Procurement frontend from the existing 118-screenshot collection and `UI_UX_AGENT_HANDOFF.md`. Workflows reference canonical screens rather than duplicating pages. The managed project is initialized at `/home/ubuntu/procureui`; it has an empty flexible workspace, runtime port 3000, no server/database enabled, and automatic publication disabled.
+
+## Product scope
+
+- App shell: global search, main navigation, notifications/account affordances, desktop sidebar, and mobile navigation.
+- Dashboard, employee requests, Procurement request queue, approvals, Items, and Vendors.
+- RFQs: list and six-stage wizard, including the captured Add Item and Add User dialogs.
+- Purchase Orders, Purchase Receives, Payables Inbox, Bills, Recurring Bills, Batch Payments, Payments Made, and Vendor Credits.
+- Budgets and Analytics.
+- Organization/configuration settings, module preferences and tabs, PDF/email template categories, automation lists, and the captured field/rule/button/related-list/email-alert/schedule builders.
+- Represent empty, populated, selected, validation, unsaved, and draft states where the references support them. Do not claim captured evidence for additional record actions or post-submission behavior.
+- The 118 images are visual references, not 118 separate React pages. Dropdowns, role variants, wizard stages, and repeat captures reuse canonical page/component definitions.
+
+## Implementation approach
+
+Use React, TypeScript, Vite, Tailwind CSS, React Router, and an outline-icon library. Configure host-managed TypeScript diagnostics before application code; pin pnpm and lifecycle-script permissions before dependencies are installed.
+
+This is a frontend prototype, not a Zoho integration: use fictional fixtures and browser-local state for records, draft forms, wizard progress, search/filter choices, and settings previews. Label simulated actions clearly. No authentication, actual payments, email delivery, Zoho API access, production record changes, database, or server are part of this frontend scope. Never import the real tenant's users, email addresses, drafts, or procurement records into the preview.
+
+- Central route registry with stable screen IDs and reference IDs.
+- Shared list framework configured by module, with distinct columns/statuses/actions.
+- Shared transaction primitives composed into entity-specific forms; receiving, billing, payment, credit, and recurrence remain semantically distinct.
+- One request model with employee/Procurement role views.
+- One RFQ draft with six stage components and dialog subflows; basic details is not implemented twice.
+- Shared catalog pickers and editors; caller context/prefill/return location changes, not the page implementation.
+- One settings shell and configurable tab model; shared builders with entity-specific schema.
+- Form controls with associated labels, keyboard access, sensible error feedback, and local draft persistence. Buttons either perform an implemented local interaction, navigate, or explicitly explain that a live service is not connected.
+
+## Reference-led design
+
+Reuse the captured desktop design: dark navy top bar, light sidebar, blue active states and primary actions, white/light-gray content panels, fine borders, compact enterprise typography, restrained outline icons, tables, and anchored form actions. Inspect the screenshot for each implemented surface and refine its desktop layout against the reference. Use no decorative stock imagery.
+
+Mobile first: adapt the sidebar into a navigation drawer/bottom entry points, stack dashboard panels, keep actions reachable, let wide tables scroll inside their containers, and turn wizard navigation into a compact step indicator. Preserve desktop reference fidelity without shrinking the desktop screenshot into a phone layout. Sanitize branding/account data and omit live subscription/trial notices from the prototype.
+
+## Project structure
+
+- `src/app/`: routing, providers, layout selection, screen registry.
+- `src/components/ui/`: buttons, fields, select controls, tabs, dialogs, badges, notices.
+- `src/components/layout/`: app shell, top bar, sidebar/mobile navigation, settings shell.
+- `src/components/data/`: table/filter framework, catalog pickers, line editor, totals, attachment controls.
+- `src/features/`: dashboard, requests/approvals, catalogs, RFQ, transactions, budgets/reports, settings/automation.
+- `src/data/`: fictional fixtures and reference-to-screen mappings.
+- `src/lib/`: browser-local persistence, formatting, validation, workflow context.
+- `public/`: favicon and synchronized `manus-routes.json`; do not expose tenant screenshots publicly.
+- `docs/`: workflow handoff, screenshot inventory, implementation coverage.
+- `TODO.md`: agreed outcome criteria and progress.
+
+## Build and handoff workflow
+
+1. Confirm this plan, then create outcome-based TODO items.
+2. Configure diagnostics, toolchain, and dependencies. Implement the shell, shared primitives, routes, and fictional/local-state model.
+3. Implement business workflows and settings using the reference mappings. Preserve page reuse and module-specific behavior.
+4. Run type checks, production build, route-manifest checks, and focused interaction checks. Compare rendered desktop/mobile surfaces against the screenshots where needed for reference fidelity. Use a read-only implementation review for this complex app and fix confirmed issues.
+5. Run the dev service on `0.0.0.0:3000`, verify the preview, configure the static build, and save a managed checkpoint. Deliver the preview with an honest coverage summary. Do not publish broadly, modify either selected GitHub repository, or connect to Zoho without a separate request.
