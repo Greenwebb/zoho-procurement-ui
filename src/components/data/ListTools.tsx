@@ -44,6 +44,7 @@ export function ListTools({
   currentView,
   viewOptions,
   onViewChange,
+  showSavedView = true,
   onExport,
   onImport,
   selectedCount = 0,
@@ -68,6 +69,7 @@ export function ListTools({
   currentView?: string;
   viewOptions?: string[];
   onViewChange?: (view: string) => void;
+  showSavedView?: boolean;
   onExport: (scope: ExportScope) => void;
   onImport?: (
     rows: Record<string, string>[],
@@ -303,6 +305,7 @@ export function ListTools({
           currentView={currentView}
           viewOptions={viewOptions}
           onViewChange={onViewChange}
+          showSavedView={showSavedView}
           onClose={() => setFilterOpen(false)}
           onApply={(next) => {
             onApplyFilters(next);
@@ -436,6 +439,7 @@ function AdvancedSearch({
   currentView,
   viewOptions,
   onViewChange,
+  showSavedView,
   onClose,
   onApply,
   onClear,
@@ -446,6 +450,7 @@ function AdvancedSearch({
   currentView?: string;
   viewOptions?: string[];
   onViewChange?: (view: string) => void;
+  showSavedView: boolean;
   onClose: () => void;
   onApply: (filters: Record<string, string>) => void;
   onClear: () => void;
@@ -460,7 +465,9 @@ function AdvancedSearch({
   };
   return (
     <Modal title={`Advanced Search · ${entity}`} onClose={onClose} wide>
-      <div className="mb-5 grid gap-4 sm:grid-cols-2">
+      <div
+        className={`mb-5 grid gap-4 ${showSavedView ? "sm:grid-cols-2" : "grid-cols-1"}`}
+      >
         <Field label="Search">
           <Select
             aria-label="Search in list entity"
@@ -470,19 +477,21 @@ function AdvancedSearch({
             <option>{searchEntity}</option>
           </Select>
         </Field>
-        <Field label="Filter">
-          <Select
-            aria-label="Saved list filter"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          >
-            {(viewOptions?.length ? viewOptions : [`All ${entity}`]).map(
-              (option) => (
-                <option key={option}>{option}</option>
-              ),
-            )}
-          </Select>
-        </Field>
+        {showSavedView && (
+          <Field label="Filter">
+            <Select
+              aria-label="Saved list filter"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+            >
+              {(viewOptions?.length ? viewOptions : [`All ${entity}`]).map(
+                (option) => (
+                  <option key={option}>{option}</option>
+                ),
+              )}
+            </Select>
+          </Field>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {fields.map((field) => (

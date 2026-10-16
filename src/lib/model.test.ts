@@ -14,6 +14,12 @@ import { settingsRoutes } from "../data/settings";
 
 import { billBalance } from "./payables";
 import { belongsToVendor, inferVendorId } from "./vendor-links";
+import {
+  CURRENT_DEMO_REQUESTER,
+  filterEmployeeRequests,
+  requesterFor,
+  withDefaultRequestOwner,
+} from "./request-views";
 
 const lines: Line[] = [
   { id: "1", name: "Office chair", quantity: 2, rate: 1250, unit: "pcs" },
@@ -154,6 +160,47 @@ describe("local list tools", () => {
     )[0];
     expect(updated.createdAt).toBe(existing.createdAt);
     expect(updated.lastModifiedAt).toBe("2026-03-04T05:06:07.000Z");
+  });
+});
+
+describe("employee purchase request views", () => {
+  const requests = fixtures.filter((record) => record.kind === "requests");
+
+  it("shows only the current demo user's pending requests by default", () => {
+    expect(
+      filterEmployeeRequests(requests, "pending", "mine").map(
+        (record) => record.id,
+      ),
+    ).toEqual(["PR-00001"]);
+  });
+
+  it("switches between my requests and all requests without mixing tab states", () => {
+    expect(
+      filterEmployeeRequests(requests, "all", "mine").map(
+        (record) => record.id,
+      ),
+    ).toEqual(["PR-00001", "PR-00002"]);
+    expect(
+      filterEmployeeRequests(requests, "pending", "all").map(
+        (record) => record.id,
+      ),
+    ).toEqual(["PR-00001", "PR-00003"]);
+    expect(
+      filterEmployeeRequests(requests, "all", "all").map((record) => record.id),
+    ).toEqual(["PR-00001", "PR-00002", "PR-00003"]);
+  });
+
+  it("labels legacy records as the current demo user and preserves explicit owners", () => {
+    const legacy = { ...requests[0], meta: undefined };
+    expect(requesterFor(legacy)).toBe(CURRENT_DEMO_REQUESTER);
+    expect(withDefaultRequestOwner(legacy).meta).toEqual({
+      requester: CURRENT_DEMO_REQUESTER,
+    });
+    const otherOwner = {
+      ...requests[2],
+      meta: { requester: "Another employee" },
+    };
+    expect(withDefaultRequestOwner(otherOwner)).toBe(otherOwner);
   });
 });
 

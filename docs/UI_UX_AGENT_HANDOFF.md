@@ -109,6 +109,8 @@ The arrows represent product relationships, not a hard requirement that every te
 
 **Frontend guidance:** implement one request entity/state model and permission-aware views. The employee view and Procurement queue can share row/detail components, but should have distinct role-specific actions, filters, and navigation. Avoid creating a second “new request” implementation merely because a request can also be opened from the Procurement queue.
 
+**My Requests tabs and scope:** the supplied crop is documented in [REFERENCE_REQUEST_VIEWS.md](./REFERENCE_REQUEST_VIEWS.md). Keep **Pending Requests** and **All Requests** as status views, separate from the **My Requests / All Requesters** scope added in the prototype. Show requester identity in all-requester results. This demo filter uses fictional browser-local owners and is not an authorization boundary; Procurement and Approvals remain separate role-specific queues.
+
 **Related shared data:** Items (`04`, `05`) and Vendors (`06`, `07`) are shared directories/forms, not request-specific pages.
 
 ### B. RFQ sourcing wizard

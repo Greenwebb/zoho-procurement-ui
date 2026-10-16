@@ -7,6 +7,7 @@ import {
 } from "react";
 import { CheckCircle2, X } from "lucide-react";
 import { inferVendorId } from "./vendor-links";
+import { withDefaultRequestOwner } from "./request-views";
 
 export type Line = {
   id: string;
@@ -122,6 +123,7 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 15900,
     status: "Pending Approval",
+    meta: { requester: "You" },
     lines: [
       {
         id: "1",
@@ -149,6 +151,17 @@ export const fixtures: AppRecord[] = [
     date: today(),
     amount: 1700,
     status: "Approved",
+    meta: { requester: "You" },
+  },
+  {
+    id: "PR-00003",
+    kind: "requests",
+    title: "Headsets for the support team",
+    party: "Support",
+    date: today(),
+    amount: 960,
+    status: "Pending Approval",
+    meta: { requester: "Another employee" },
   },
   {
     id: "RFQ-00001",
@@ -360,7 +373,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
   const saveRecord = (record: AppRecord) => {
-    setRecords((previous) => saveToRecords(previous, record));
+    setRecords((previous) =>
+      saveToRecords(previous, withDefaultRequestOwner(record)),
+    );
   };
   const updateRecord = (id: string, updates: Partial<AppRecord>) =>
     setRecords((previous) => updateInRecords(previous, id, updates));

@@ -13,8 +13,14 @@ import {
   X,
 } from "lucide-react";
 import { modules, type ModuleKey } from "../data/modules";
-import { useApp, money, type AppRecord } from "../lib/store";
+import { useApp, useStoredState, money, type AppRecord } from "../lib/store";
 import { removeSelectedId, updateVisibleSelection } from "../lib/list-state";
+import {
+  filterEmployeeRequests,
+  requesterFor,
+  type RequestListTab,
+  type RequestOwnerScope,
+} from "../lib/request-views";
 import { Badge, Button, EmptyState, Modal, PageHeader } from "../components/ui";
 import { DeleteConfirm } from "../components/data/DetailPrimitives";
 import {
@@ -38,6 +44,15 @@ export function RecordList({
   const config = modules[kind];
   const { records, updateRecord, deleteRecord, notify } = useApp();
   const navigate = useNavigate();
+  const employeeRequests = kind === "requests" && !procurement && !approval;
+  const [requestTab, setRequestTab] = useStoredState<RequestListTab>(
+    "my-requests-tab",
+    "pending",
+  );
+  const [requestScope, setRequestScope] = useStoredState<RequestOwnerScope>(
+    "my-requests-scope",
+    "mine",
+  );
   const [query, setQuery] = useState(""),
     [status, setStatus] = useState("All"),
     [sort, setSort] = useState("newest"),
@@ -46,6 +61,7 @@ export function RecordList({
       "date",
       "number",
       "party",
+      "requester",
       "status",
       "amount",
     ]),
@@ -54,15 +70,21 @@ export function RecordList({
     [selected, setSelected] = useState<string[]>([]),
     [detail, setDetail] = useState<AppRecord | null>(null),
     [pendingDelete, setPendingDelete] = useState<AppRecord | null>(null);
-  const all = records.filter(
-    (record) =>
-      record.kind === kind &&
-      (!approval || record.status === "Pending Approval"),
-  );
+  const all = employeeRequests
+    ? filterEmployeeRequests(
+        records.filter((record) => record.kind === kind),
+        requestTab,
+        requestScope,
+      )
+    : records.filter(
+        (record) =>
+          record.kind === kind &&
+          (!approval || record.status === "Pending Approval"),
+      );
   const filtered = all
     .filter(
       (record) =>
-        `${record.id} ${record.title} ${record.party}`
+        `${record.id} ${record.title} ${record.party} ${kind === "requests" ? requesterFor(record) : ""}`
           .toLowerCase()
           .includes(query.toLowerCase()) &&
         (status === "All" ||
@@ -74,6 +96,7 @@ export function RecordList({
             number: record.id,
             title: record.title,
             party: record.party,
+            requester: requesterFor(record),
             date: record.date,
             status: record.status,
             amount: String(record.amount),
@@ -92,9 +115,11 @@ export function RecordList({
             ? a.id.localeCompare(b.id)
             : sort === "party"
               ? a.party.localeCompare(b.party)
-              : sort === "status"
-                ? a.status.localeCompare(b.status)
-                : b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
+              : sort === "requester"
+                ? requesterFor(a).localeCompare(requesterFor(b))
+                : sort === "status"
+                  ? a.status.localeCompare(b.status)
+                  : b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
     );
   const title = approval
     ? "Approvals"
@@ -110,6 +135,9 @@ export function RecordList({
       label: kind === "requests" ? "Department" : "Vendor / Team",
       width: 180,
     },
+    ...(kind === "requests"
+      ? [{ key: "requester", label: "Requested By", width: 150 }]
+      : []),
     { key: "status", label: "Status", width: 130 },
     { key: "amount", label: kind === "rfqs" ? "Type" : "Amount", width: 130 },
   ];
@@ -121,6 +149,9 @@ export function RecordList({
       key: "party",
       label: kind === "requests" ? "Department" : "Vendor / Team",
     },
+    ...(kind === "requests"
+      ? [{ key: "requester", label: "Requested by" }]
+      : []),
     { key: "status", label: "Status" },
     { key: "amount", label: "Amount · Highest first" },
   ];
@@ -131,6 +162,9 @@ export function RecordList({
       key: "party",
       label: kind === "requests" ? "Department" : "Vendor / Team",
     },
+    ...(kind === "requests"
+      ? [{ key: "requester", label: "Requested by" }]
+      : []),
     { key: "date", label: "Date" },
     { key: "status", label: "Status", type: "select", options: statuses },
     { key: "amount", label: "Amount" },
@@ -152,6 +186,7 @@ export function RecordList({
         exportColumns.map((column) => {
           if (column.key === "number") return `${record.id} · ${record.title}`;
           if (column.key === "party") return record.party;
+          if (column.key === "requester") return requesterFor(record);
           if (column.key === "date") return record.date;
           if (column.key === "status") return record.status;
           return kind === "rfqs" ? "Request for Quote" : String(record.amount);
@@ -232,10 +267,20 @@ export function RecordList({
               filterFields={filterFields}
               activeFilters={filters}
               onApplyFilters={setFilters}
-              currentView={status === "All" ? `All ${title}` : status}
-              viewOptions={[`All ${title}`, ...statuses]}
-              onViewChange={(view) =>
-                setStatus(view.startsWith("All") ? "All" : view)
+              currentView={
+                employeeRequests
+                  ? undefined
+                  : status === "All"
+                    ? `All ${title}`
+                    : status
+              }
+              viewOptions={
+                employeeRequests ? undefined : [`All ${title}`, ...statuses]
+              }
+              onViewChange={
+                employeeRequests
+                  ? undefined
+                  : (view) => setStatus(view.startsWith("All") ? "All" : view)
               }
               onExport={exportLocal}
               selectedCount={selected.length}
@@ -247,6 +292,7 @@ export function RecordList({
                 notify("Column widths restored to their default preview size.");
               }}
               notify={notify}
+              showSavedView={!employeeRequests}
             />
             {!approval && (
               <Link
@@ -276,23 +322,67 @@ export function RecordList({
       <div className="rounded-lg border border-slate-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <select
-                aria-label="Filter records by status"
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-                className="bg-transparent pr-2 outline-none"
-              >
-                <option value="All">
-                  All {approval ? "Pending Requests" : title}
-                </option>
-                {statuses.map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-                <option value="Empty">Empty state preview</option>
-              </select>
-              <ChevronDown size={14} className="text-slate-400" />
-            </label>
+            {employeeRequests ? (
+              <>
+                <div
+                  role="tablist"
+                  aria-label="Purchase request status views"
+                  className="flex items-center gap-1"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={requestTab === "pending"}
+                    onClick={() => setRequestTab("pending")}
+                    className={`border-b-2 px-3 py-3 text-sm font-medium ${requestTab === "pending" ? "border-blue-500 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                  >
+                    Pending Requests
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={requestTab === "all"}
+                    onClick={() => setRequestTab("all")}
+                    className={`border-b-2 px-3 py-3 text-sm font-medium ${requestTab === "all" ? "border-blue-500 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                  >
+                    All Requests
+                    <ChevronDown size={13} className="ml-1 inline-block" />
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                  <span className="sr-only">Request owner scope</span>
+                  <select
+                    aria-label="Request owner scope"
+                    value={requestScope}
+                    onChange={(event) =>
+                      setRequestScope(event.target.value as RequestOwnerScope)
+                    }
+                    className="max-w-[150px] rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 outline-none focus:border-blue-400"
+                  >
+                    <option value="mine">My Requests</option>
+                    <option value="all">All Requesters</option>
+                  </select>
+                </label>
+              </>
+            ) : (
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <select
+                  aria-label="Filter records by status"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                  className="bg-transparent pr-2 outline-none"
+                >
+                  <option value="All">
+                    All {approval ? "Pending Requests" : title}
+                  </option>
+                  {statuses.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                  <option value="Empty">Empty state preview</option>
+                </select>
+                <ChevronDown size={14} className="text-slate-400" />
+              </label>
+            )}
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
               {filtered.length}
             </span>
@@ -432,6 +522,10 @@ export function RecordList({
                           ) : column.key === "party" ? (
                             <span className="text-slate-600">
                               {record.party}
+                            </span>
+                          ) : column.key === "requester" ? (
+                            <span className="text-slate-600">
+                              {requesterFor(record)}
                             </span>
                           ) : column.key === "status" ? (
                             <Badge>{record.status}</Badge>

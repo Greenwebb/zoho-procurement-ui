@@ -8,6 +8,7 @@ Build the Zoho Procurement frontend from the existing 118-screenshot collection 
 
 - App shell: global search, main navigation, notifications/account affordances, desktop sidebar, and mobile navigation.
 - Dashboard, employee requests, Procurement request queue, approvals, Items, and Vendors.
+- The employee-facing My Requests screen exposes Pending Requests and All Requests tabs plus a scope switch between My Requests and All Requesters. Pending is a status view; All includes every status within the selected owner scope. Use fictional requester labels only.
 - RFQs: list and six-stage wizard, including the captured Add Item and Add User dialogs.
 - Purchase Orders, Purchase Receives, Payables Inbox, Bills, Recurring Bills, Batch Payments, Payments Made, and Vendor Credits.
 - Budgets and Analytics.
